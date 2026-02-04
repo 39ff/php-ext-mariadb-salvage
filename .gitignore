@@ -1,0 +1,44 @@
+# Composer
+/vendor/
+composer.lock
+
+# PHP Extension build artifacts
+ext/mariadb_profiler/.deps
+ext/mariadb_profiler/.libs
+ext/mariadb_profiler/Makefile
+ext/mariadb_profiler/Makefile.fragments
+ext/mariadb_profiler/Makefile.global
+ext/mariadb_profiler/Makefile.objects
+ext/mariadb_profiler/acinclude.m4
+ext/mariadb_profiler/aclocal.m4
+ext/mariadb_profiler/autom4te.cache/
+ext/mariadb_profiler/build/
+ext/mariadb_profiler/config.guess
+ext/mariadb_profiler/config.h
+ext/mariadb_profiler/config.h.in
+ext/mariadb_profiler/config.log
+ext/mariadb_profiler/config.nice
+ext/mariadb_profiler/config.status
+ext/mariadb_profiler/config.sub
+ext/mariadb_profiler/configure
+ext/mariadb_profiler/configure.ac
+ext/mariadb_profiler/install-sh
+ext/mariadb_profiler/libtool
+ext/mariadb_profiler/ltmain.sh
+ext/mariadb_profiler/missing
+ext/mariadb_profiler/mkinstalldirs
+ext/mariadb_profiler/modules/
+ext/mariadb_profiler/run-tests.php
+ext/mariadb_profiler/*.o
+ext/mariadb_profiler/*.lo
+ext/mariadb_profiler/*.la
+
+# Profiler output
+/tmp/mariadb_profiler/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
