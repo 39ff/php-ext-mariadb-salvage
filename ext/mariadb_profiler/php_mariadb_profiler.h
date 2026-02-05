@@ -29,6 +29,7 @@ extern zend_module_entry mariadb_profiler_module_entry;
 #include "ext/mysqlnd/mysqlnd.h"
 #include "ext/mysqlnd/mysqlnd_structs.h"
 #include "ext/mysqlnd/mysqlnd_statistics.h"
+#include "ext/mysqlnd/mysqlnd_ext_plugin.h"
 
 /* Module globals */
 ZEND_BEGIN_MODULE_GLOBALS(mariadb_profiler)
@@ -41,6 +42,9 @@ ZEND_BEGIN_MODULE_GLOBALS(mariadb_profiler)
     char     **active_jobs;
     int        active_job_count;
 ZEND_END_MODULE_GLOBALS(mariadb_profiler)
+
+/* Globals accessor: extern declaration for use across compilation units */
+ZEND_EXTERN_MODULE_GLOBALS(mariadb_profiler)
 
 #ifdef ZTS
 #define PROFILER_G(v) ZEND_MODULE_GLOBALS_ACCESSOR(mariadb_profiler, v)
