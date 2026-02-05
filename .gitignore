@@ -32,6 +32,7 @@ ext/mariadb_profiler/run-tests.php
 ext/mariadb_profiler/*.o
 ext/mariadb_profiler/*.lo
 ext/mariadb_profiler/*.la
+ext/mariadb_profiler/*.dep
 
 # Profiler output
 /tmp/mariadb_profiler/
