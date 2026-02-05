@@ -80,7 +80,7 @@ class JobManager
      *
      * @return int|false Number of queries captured, or false on failure
      */
-    public function endJob(string $key): int|false
+    public function endJob(string $key)
     {
         $data = $this->readJobsFile();
 

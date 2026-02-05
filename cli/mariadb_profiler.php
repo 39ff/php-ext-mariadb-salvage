@@ -55,7 +55,7 @@ for ($i = 0; $i < count($args); $i++) {
     if ($args[$i] === '--log-dir' && isset($args[$i + 1])) {
         $logDir = $args[$i + 1];
         $i++;
-    } elseif (str_starts_with($args[$i], '--log-dir=')) {
+    } elseif (strpos($args[$i], '--log-dir=') === 0) {
         $logDir = substr($args[$i], strlen('--log-dir='));
     } else {
         $filteredArgs[] = $args[$i];
