@@ -21,10 +21,13 @@
  *   - mysqlnd_conn_get_methods() returns st_mysqlnd_conn_data_methods *
  *   - send_query has extra 'type' param (enum_mysqlnd_send_query_type)
  *
- * PHP 8.0+:
+ * PHP 8.0:
  *   - mysqlnd_conn_get_methods() returns st_mysqlnd_conn_methods * (outer)
  *   - mysqlnd_conn_data_get_methods() returns st_mysqlnd_conn_data_methods *
- *   - send_query without 'type' param
+ *   - send_query still has 'type' param (enum_mysqlnd_send_query_type)
+ *
+ * PHP 8.1+:
+ *   - enum_mysqlnd_send_query_type removed; send_query without 'type' param
  */
 
 static unsigned int profiler_plugin_id;
@@ -53,10 +56,10 @@ MYSQLND_METHOD(profiler_conn, query)(
 
 /* {{{ profiler_send_query_hook
  * send_query() signature changed between PHP versions:
- *   PHP 7.x: (conn, query, query_len, type, read_cb, err_cb)
- *   PHP 8.0+: (conn, query, query_len, read_cb, err_cb)
+ *   PHP 7.x-8.0: (conn, query, query_len, type, read_cb, err_cb)
+ *   PHP 8.1+:    (conn, query, query_len, read_cb, err_cb)
  */
-#if PHP_VERSION_ID < 80000
+#if PHP_VERSION_ID < 80100
 static enum_func_status
 MYSQLND_METHOD(profiler_conn, send_query)(
     MYSQLND_CONN_DATA *conn,
