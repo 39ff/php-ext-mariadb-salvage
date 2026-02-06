@@ -1,0 +1,74 @@
+name: Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  test-cli:
+    name: CLI Tests (PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: mysqlnd
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run SqlAnalyzer tests
+        run: php tests/test_sql_analyzer.php
+
+      - name: Run JobManager tests
+        run: php tests/test_job_manager.php
+
+      - name: Run Integration tests
+        run: php tests/test_integration.php
+
+  build-extension:
+    name: Build Extension (PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP with dev tools
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: mysqlnd
+          tools: phpize
+          ini-values: error_reporting=E_ALL
+
+      - name: Build extension
+        working-directory: ext/mariadb_profiler
+        run: |
+          phpize
+          ./configure --enable-mariadb_profiler
+          make -j$(nproc)
+
+      - name: Verify .so is loadable
+        working-directory: ext/mariadb_profiler
+        run: |
+          php -d "extension=$(pwd)/modules/mariadb_profiler.so" -m | grep mariadb_profiler
+
+      - name: Show extension info
+        working-directory: ext/mariadb_profiler
+        run: |
+          php -d "extension=$(pwd)/modules/mariadb_profiler.so" --ri mariadb_profiler

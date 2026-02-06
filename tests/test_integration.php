@@ -8,6 +8,12 @@ declare(strict_types=1);
  * This test does NOT require the C extension (tests CLI + PHPSQLParser only).
  */
 
+// Polyfill for PHP < 8.0
+function str_contains_compat(string $haystack, string $needle): bool
+{
+    return $needle === '' || strpos($haystack, $needle) !== false;
+}
+
 $cliTool = __DIR__ . '/../cli/mariadb_profiler.php';
 $testDir = sys_get_temp_dir() . '/mariadb_profiler_integ_' . getmypid();
 $passed = 0;
@@ -59,16 +65,16 @@ $base = "php {$cliTool} --log-dir={$testDir}";
 
 // Start job uuid1
 $r = run("{$base} job start uuid1");
-assert_test('Start uuid1', str_contains($r['output'], '[OK]'), $r['output']);
+assert_test('Start uuid1', str_contains_compat($r['output'], '[OK]'), $r['output']);
 
 // Start job uuid2 (nested)
 $r = run("{$base} job start uuid2");
-assert_test('Start uuid2', str_contains($r['output'], '[OK]'), $r['output']);
+assert_test('Start uuid2', str_contains_compat($r['output'], '[OK]'), $r['output']);
 
 // List should show 2 active jobs
 $r = run("{$base} job list");
-assert_test('List shows uuid1', str_contains($r['output'], 'uuid1'), $r['output']);
-assert_test('List shows uuid2', str_contains($r['output'], 'uuid2'), $r['output']);
+assert_test('List shows uuid1', str_contains_compat($r['output'], 'uuid1'), $r['output']);
+assert_test('List shows uuid2', str_contains_compat($r['output'], 'uuid2'), $r['output']);
 
 // Simulate query log for uuid1 (as if the extension wrote them)
 $queries1 = [
@@ -98,19 +104,19 @@ file_put_contents($testDir . '/uuid2.jsonl', implode("\n", $queries2) . "\n");
 
 // End uuid2
 $r = run("{$base} job end uuid2");
-assert_test('End uuid2', str_contains($r['output'], '[OK]') && str_contains($r['output'], '1 queries'), $r['output']);
+assert_test('End uuid2', str_contains_compat($r['output'], '[OK]') && str_contains_compat($r['output'], '1 queries'), $r['output']);
 
 // Start uuid3
 $r = run("{$base} job start uuid3");
-assert_test('Start uuid3', str_contains($r['output'], '[OK]'), $r['output']);
+assert_test('Start uuid3', str_contains_compat($r['output'], '[OK]'), $r['output']);
 
 // End uuid3 (no queries)
 $r = run("{$base} job end uuid3");
-assert_test('End uuid3', str_contains($r['output'], '[OK]'), $r['output']);
+assert_test('End uuid3', str_contains_compat($r['output'], '[OK]'), $r['output']);
 
 // End uuid1
 $r = run("{$base} job end uuid1");
-assert_test('End uuid1', str_contains($r['output'], '[OK]') && str_contains($r['output'], '5 queries'), $r['output']);
+assert_test('End uuid1', str_contains_compat($r['output'], '[OK]') && str_contains_compat($r['output'], '5 queries'), $r['output']);
 
 // Show parsed results for uuid1
 $r = run("{$base} job show uuid1");
@@ -149,11 +155,11 @@ if (count($lines) >= 1) {
 
 // Raw log
 $r = run("{$base} job raw uuid1");
-assert_test('Raw log contains SELECT', str_contains($r['output'], 'SELECT u.name'), $r['output']);
+assert_test('Raw log contains SELECT', str_contains_compat($r['output'], 'SELECT u.name'), $r['output']);
 
 // Export
 $r = run("{$base} job export uuid1");
-assert_test('Export succeeds', str_contains($r['output'], '[OK]'), $r['output']);
+assert_test('Export succeeds', str_contains_compat($r['output'], '[OK]'), $r['output']);
 assert_test('Parsed file exists', file_exists($testDir . '/uuid1.parsed.json'));
 
 if (file_exists($testDir . '/uuid1.parsed.json')) {
@@ -164,11 +170,11 @@ if (file_exists($testDir . '/uuid1.parsed.json')) {
 
 // List should show all completed
 $r = run("{$base} job list");
-assert_test('List shows COMPLETED section', str_contains($r['output'], 'COMPLETED'), $r['output']);
+assert_test('List shows COMPLETED section', str_contains_compat($r['output'], 'COMPLETED'), $r['output']);
 
 // Purge
 $r = run("{$base} job purge");
-assert_test('Purge succeeds', str_contains($r['output'], '[OK]'), $r['output']);
+assert_test('Purge succeeds', str_contains_compat($r['output'], '[OK]'), $r['output']);
 
 // Cleanup
 cleanup($testDir);
