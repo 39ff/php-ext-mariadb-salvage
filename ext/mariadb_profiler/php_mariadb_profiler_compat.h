@@ -64,14 +64,14 @@ typedef long zend_long;
 /*
  * ---- mysqlnd compatibility ----
  *
- * PHP 5.3-5.4:
+ * PHP 5.3:
  *   - Connection type: MYSQLND *
  *   - Methods struct: struct st_mysqlnd_conn_methods
  *   - Accessor: mysqlnd_conn_get_methods() -> st_mysqlnd_conn_methods *
  *   - query_len type: unsigned int
  *   - All method signatures include TSRMLS_DC
  *
- * PHP 5.5-5.6:
+ * PHP 5.4-5.6:
  *   - Connection split: MYSQLND (outer) + MYSQLND_CONN_DATA (inner)
  *   - Methods struct: struct st_mysqlnd_conn_data_methods
  *   - Accessor: mysqlnd_conn_get_methods() -> st_mysqlnd_conn_data_methods *
@@ -89,7 +89,7 @@ typedef long zend_long;
  *   - send_query: enum_mysqlnd_send_query_type removed
  */
 
-#if PHP_VERSION_ID < 50500
+#if PHP_VERSION_ID < 50400
 # define PROFILER_CONN_T           MYSQLND
 # define PROFILER_CONN_METHODS_T   struct st_mysqlnd_conn_methods
 #else
