@@ -66,21 +66,22 @@ typedef long zend_long;
  *
  * PHP 5.3:
  *   - Connection type: MYSQLND *
- *   - Methods struct: struct st_mysqlnd_conn_methods
+ *   - Methods struct: struct st_mysqlnd_conn_methods (has query/send_query)
  *   - Accessor: mysqlnd_conn_get_methods() -> st_mysqlnd_conn_methods *
- *   - query_len type: unsigned int
- *   - All method signatures include TSRMLS_DC
+ *   - send_query: simple (conn, query, query_len TSRMLS_DC)
  *
  * PHP 5.4-5.6:
  *   - Connection split: MYSQLND (outer) + MYSQLND_CONN_DATA (inner)
- *   - Methods struct: struct st_mysqlnd_conn_data_methods
- *   - Accessor: mysqlnd_conn_get_methods() -> st_mysqlnd_conn_data_methods *
- *   - query_len type: unsigned int
- *   - All method signatures include TSRMLS_DC
+ *   - Methods struct: struct st_mysqlnd_conn_data_methods (has query/send_query)
+ *   - Accessor: mysqlnd_conn_data_get_methods() -> st_mysqlnd_conn_data_methods *
+ *     (mysqlnd_conn_get_methods() returns the OUTER st_mysqlnd_conn_methods)
+ *   - send_query: simple (conn, query, query_len TSRMLS_DC)
  *
  * PHP 7.0-7.4:
- *   - Same types as 5.5 but TSRMLS removed
- *   - query_len type: const size_t
+ *   - Same data types as 5.4 but TSRMLS removed, query_len is const size_t
+ *   - Accessor: mysqlnd_conn_get_methods() -> st_mysqlnd_conn_data_methods *
+ *     (return type changed from outer to inner)
+ *   - send_query: extended (type, read_cb, err_cb) with enum_mysqlnd_send_query_type
  *
  * PHP 8.0:
  *   - Accessor renamed: mysqlnd_conn_data_get_methods()
@@ -103,7 +104,18 @@ typedef long zend_long;
 # define PROFILER_QUERY_LEN_T      const size_t
 #endif
 
-#if PHP_VERSION_ID < 80000
+/*
+ * Methods accessor:
+ *   PHP 5.3:     mysqlnd_conn_get_methods() returns st_mysqlnd_conn_methods *
+ *   PHP 5.4-5.6: mysqlnd_conn_data_get_methods() returns st_mysqlnd_conn_data_methods *
+ *   PHP 7.0-7.4: mysqlnd_conn_get_methods() returns st_mysqlnd_conn_data_methods *
+ *   PHP 8.0+:    mysqlnd_conn_data_get_methods() returns st_mysqlnd_conn_data_methods *
+ */
+#if PHP_VERSION_ID < 50400
+# define profiler_conn_data_get_methods() mysqlnd_conn_get_methods()
+#elif PHP_VERSION_ID < 70000
+# define profiler_conn_data_get_methods() mysqlnd_conn_data_get_methods()
+#elif PHP_VERSION_ID < 80000
 # define profiler_conn_data_get_methods() mysqlnd_conn_get_methods()
 #else
 # define profiler_conn_data_get_methods() mysqlnd_conn_data_get_methods()
