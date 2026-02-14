@@ -5,17 +5,13 @@ Runs against the Docker Compose environment, takes screenshots at each stage,
 and collects profiler logs for upload as CI artifacts.
 """
 
-import json
 import os
-import shutil
-import sys
 import time
 import unittest
 from pathlib import Path
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -73,6 +69,23 @@ class DemoE2ETest(unittest.TestCase):
             EC.element_to_be_clickable((by, value))
         )
 
+    def wait_for_text(self, text, timeout=WAIT_TIMEOUT):
+        """Wait until text appears anywhere on the page."""
+        WebDriverWait(self.driver, timeout).until(
+            lambda d: text in d.find_element(By.TAG_NAME, "body").text
+        )
+
+    def start_session_and_wait(self):
+        """Click Start Session and wait for RECORDING to appear."""
+        start_btn = self.wait_clickable(
+            By.XPATH, "//button[contains(., 'Start Session')]"
+        )
+        start_btn.click()
+        # Wait until the RECORDING badge and terminal appear
+        self.wait_for_text("RECORDING")
+        # Give the terminal a moment to render its welcome message
+        time.sleep(1)
+
     # ------------------------------------------------------------------
     # Tests run in alphabetical order; prefix with number for sequence
     # ------------------------------------------------------------------
@@ -82,8 +95,8 @@ class DemoE2ETest(unittest.TestCase):
         print("\n[Test 01] Loading dashboard page...")
         self.driver.get(BASE_URL)
 
-        # Wait for page to fully render (Alpine.js needs a moment)
-        time.sleep(2)
+        # Wait for Alpine.js to render the empty state
+        self.wait_for_text("No active profiling sessions")
 
         self.screenshot("01_initial_page_load")
 
@@ -94,35 +107,24 @@ class DemoE2ETest(unittest.TestCase):
         heading = self.driver.find_element(By.TAG_NAME, "h1")
         self.assertIn("MariaDB Query Profiler", heading.text)
 
-        # Verify empty state message
-        page_text = self.driver.find_element(By.TAG_NAME, "body").text
-        self.assertIn("No active profiling sessions", page_text)
-
         print("  Dashboard loaded successfully")
 
     def test_02_start_session(self):
         """Start a profiling session and verify the tab appears."""
         print("\n[Test 02] Starting profiling session...")
         self.driver.get(BASE_URL)
-        time.sleep(2)
+        self.wait_for_text("No active profiling sessions")
 
-        # Click Start Session button
-        start_btn = self.wait_clickable(
-            By.XPATH, "//button[contains(., 'Start Session')]"
-        )
-        start_btn.click()
+        self.start_session_and_wait()
         print("  Clicked 'Start Session'")
 
-        # Wait for the tab to appear (the session key in a button)
-        time.sleep(3)
         self.screenshot("02_session_started")
 
-        # The terminal container should now be visible
+        # Verify RECORDING status is shown
         body_text = self.driver.find_element(By.TAG_NAME, "body").text
-        # "RECORDING" status should be shown
         self.assertIn("RECORDING", body_text)
 
-        # Terminal should show connection messages
+        # Wait for terminal to show connection messages
         time.sleep(2)
         self.screenshot("03_terminal_connected")
         print("  Session started, terminal connected")
@@ -131,14 +133,10 @@ class DemoE2ETest(unittest.TestCase):
         """Run demo queries and verify they execute."""
         print("\n[Test 03] Running demo queries...")
         self.driver.get(BASE_URL)
-        time.sleep(2)
+        self.wait_for_text("No active profiling sessions")
 
         # Start a new session first
-        start_btn = self.wait_clickable(
-            By.XPATH, "//button[contains(., 'Start Session')]"
-        )
-        start_btn.click()
-        time.sleep(3)
+        self.start_session_and_wait()
 
         # Now click "Run Demo Queries"
         query_btn = self.wait_clickable(
@@ -147,16 +145,12 @@ class DemoE2ETest(unittest.TestCase):
         query_btn.click()
         print("  Clicked 'Run Demo Queries'")
 
-        # Wait for queries to execute and result message to appear
-        time.sleep(3)
+        # Wait for the success message to appear
+        self.wait_for_text("queries executed")
         self.screenshot("04_queries_executed")
 
-        # Check the success message
-        body_text = self.driver.find_element(By.TAG_NAME, "body").text
-        self.assertIn("queries executed", body_text)
-
-        # Wait a moment for log stream to show captured queries in terminal
-        time.sleep(3)
+        # Wait for log stream to show captured queries in terminal
+        time.sleep(4)
         self.screenshot("05_terminal_with_queries")
         print("  Demo queries executed successfully")
 
@@ -164,21 +158,18 @@ class DemoE2ETest(unittest.TestCase):
         """Stop the profiling session and verify it stops."""
         print("\n[Test 04] Stopping profiling session...")
         self.driver.get(BASE_URL)
-        time.sleep(2)
+        self.wait_for_text("No active profiling sessions")
 
         # Start session
-        start_btn = self.wait_clickable(
-            By.XPATH, "//button[contains(., 'Start Session')]"
-        )
-        start_btn.click()
-        time.sleep(3)
+        self.start_session_and_wait()
 
         # Run queries to have something captured
         query_btn = self.wait_clickable(
             By.XPATH, "//button[contains(., 'Run Demo Queries')]"
         )
         query_btn.click()
-        time.sleep(3)
+        self.wait_for_text("queries executed")
+        time.sleep(2)
 
         # Click Stop
         stop_btn = self.wait_clickable(
@@ -187,10 +178,11 @@ class DemoE2ETest(unittest.TestCase):
         stop_btn.click()
         print("  Clicked 'Stop'")
 
-        time.sleep(2)
+        # Wait for STOPPED status
+        self.wait_for_text("STOPPED")
+        time.sleep(1)
         self.screenshot("06_session_stopped")
 
-        # Verify the session shows STOPPED
         body_text = self.driver.find_element(By.TAG_NAME, "body").text
         self.assertIn("STOPPED", body_text)
         print("  Session stopped successfully")
@@ -199,30 +191,24 @@ class DemoE2ETest(unittest.TestCase):
         """Start multiple sessions and verify tabs work."""
         print("\n[Test 05] Testing multiple sessions...")
         self.driver.get(BASE_URL)
-        time.sleep(2)
+        self.wait_for_text("No active profiling sessions")
 
         # Start first session
-        start_btn = self.wait_clickable(
-            By.XPATH, "//button[contains(., 'Start Session')]"
-        )
-        start_btn.click()
-        time.sleep(3)
+        self.start_session_and_wait()
 
         # Start second session
-        start_btn = self.wait_clickable(
-            By.XPATH, "//button[contains(., 'Start Session')]"
-        )
-        start_btn.click()
-        time.sleep(3)
+        self.start_session_and_wait()
+        time.sleep(1)
 
         self.screenshot("07_multiple_sessions")
 
-        # Run queries (should be captured by both)
+        # Run queries (should be captured by both active sessions)
         query_btn = self.wait_clickable(
             By.XPATH, "//button[contains(., 'Run Demo Queries')]"
         )
         query_btn.click()
-        time.sleep(3)
+        self.wait_for_text("queries executed")
+        time.sleep(4)
 
         self.screenshot("08_multiple_sessions_with_queries")
         print("  Multiple sessions created and queries executed")
@@ -231,11 +217,9 @@ class DemoE2ETest(unittest.TestCase):
         """Collect profiler logs from the container volume."""
         print("\n[Test 06] Collecting profiler logs...")
 
-        # Copy logs from Docker volume via docker cp
         try:
             import subprocess
 
-            # Get the app container name
             result = subprocess.run(
                 ["docker", "compose", "-f", "docker-compose.yml",
                  "ps", "-q", "app"],
@@ -244,7 +228,6 @@ class DemoE2ETest(unittest.TestCase):
             container_id = result.stdout.strip()
 
             if container_id:
-                # Copy log files from container
                 subprocess.run(
                     ["docker", "cp", f"{container_id}:/var/profiler/.",
                      str(LOG_OUTPUT_DIR)],
@@ -252,7 +235,6 @@ class DemoE2ETest(unittest.TestCase):
                 )
                 print(f"  Logs copied to {LOG_OUTPUT_DIR}")
 
-                # List collected files
                 log_files = list(LOG_OUTPUT_DIR.iterdir())
                 print(f"  Collected {len(log_files)} log files:")
                 for f in sorted(log_files):
@@ -286,7 +268,6 @@ class DemoE2ETest(unittest.TestCase):
             self.assertIn("mariadb_profiler", modules)
             print("  Extension 'mariadb_profiler' is loaded")
 
-            # Get extension ini settings
             result = subprocess.run(
                 ["docker", "compose", "-f", "docker-compose.yml",
                  "exec", "-T", "app",
@@ -295,9 +276,7 @@ class DemoE2ETest(unittest.TestCase):
                 cwd=str(Path(__file__).parent.parent)
             )
 
-            # Save phpinfo output
             phpinfo_path = LOG_OUTPUT_DIR / "phpinfo_extension.txt"
-            # Extract mariadb_profiler section
             lines = result.stdout.split("\n")
             capture = False
             section_lines = []

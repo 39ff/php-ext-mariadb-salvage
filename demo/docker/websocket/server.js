@@ -1,6 +1,6 @@
 const http = require('http');
 const { WebSocketServer } = require('ws');
-const { spawn, execSync } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -28,44 +28,64 @@ wss.on('connection', (ws, req) => {
 
   console.log(`[connect] job=${jobKey}`);
 
-  // Create the file if it doesn't exist yet
-  try {
-    if (!fs.existsSync(logFile)) {
-      fs.writeFileSync(logFile, '', { flag: 'a' });
-    }
-  } catch (err) {
-    ws.send(`\r\n*** Cannot create log file: ${err.message} ***\r\n`);
-    ws.close();
-    return;
+  // Wait for the log file to appear (created by PHP extension), then stream it.
+  // Use a polling approach since the volume is read-only for this container.
+  let tail = null;
+
+  function startTail() {
+    // tail -F retries if the file doesn't exist yet (--follow=name --retry)
+    tail = spawn('tail', ['-n', '+1', '-F', logFile]);
+
+    tail.stdout.on('data', (data) => {
+      if (ws.readyState === ws.OPEN) {
+        // Convert newlines for xterm.js (needs \r\n)
+        const text = data.toString().replace(/\n/g, '\r\n');
+        ws.send(text);
+      }
+    });
+
+    tail.stderr.on('data', (data) => {
+      // tail -F prints warnings to stderr when file doesn't exist yet; ignore them
+      const msg = data.toString();
+      if (!msg.includes('has become accessible') && !msg.includes('cannot open')) {
+        console.error(`[tail stderr] job=${jobKey}: ${msg}`);
+      }
+    });
+
+    tail.on('close', (code) => {
+      console.log(`[tail exit] job=${jobKey} code=${code}`);
+    });
   }
 
-  // Send existing content first, then follow
-  const tail = spawn('tail', ['-n', '+1', '-f', logFile]);
+  // If file exists, start immediately; otherwise poll until it appears
+  if (fs.existsSync(logFile)) {
+    startTail();
+  } else {
+    ws.send('\x1b[90mWaiting for profiler log file...\x1b[0m\r\n');
+    const pollInterval = setInterval(() => {
+      if (ws.readyState !== ws.OPEN) {
+        clearInterval(pollInterval);
+        return;
+      }
+      if (fs.existsSync(logFile)) {
+        clearInterval(pollInterval);
+        ws.send('\x1b[90mLog file found, streaming...\x1b[0m\r\n');
+        startTail();
+      }
+    }, 500);
 
-  tail.stdout.on('data', (data) => {
-    if (ws.readyState === ws.OPEN) {
-      // Convert newlines for xterm.js (needs \r\n)
-      const text = data.toString().replace(/\n/g, '\r\n');
-      ws.send(text);
-    }
-  });
-
-  tail.stderr.on('data', (data) => {
-    console.error(`[tail stderr] job=${jobKey}: ${data}`);
-  });
-
-  tail.on('close', (code) => {
-    console.log(`[tail exit] job=${jobKey} code=${code}`);
-  });
+    // Clean up poll on disconnect
+    ws.on('close', () => clearInterval(pollInterval));
+  }
 
   ws.on('close', () => {
     console.log(`[disconnect] job=${jobKey}`);
-    tail.kill('SIGTERM');
+    if (tail) tail.kill('SIGTERM');
   });
 
   ws.on('error', (err) => {
     console.error(`[ws error] job=${jobKey}: ${err.message}`);
-    tail.kill('SIGTERM');
+    if (tail) tail.kill('SIGTERM');
   });
 });
 
