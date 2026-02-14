@@ -75,6 +75,12 @@ class DemoE2ETest(unittest.TestCase):
             lambda d: text in d.find_element(By.TAG_NAME, "body").text
         )
 
+    def wait_for_page_loaded(self):
+        """Wait for the dashboard page heading to appear."""
+        self.wait_for(By.TAG_NAME, "h1")
+        # Give Alpine.js a moment to hydrate
+        time.sleep(1)
+
     def start_session_and_wait(self):
         """Click Start Session and wait for RECORDING to appear."""
         start_btn = self.wait_clickable(
@@ -87,7 +93,9 @@ class DemoE2ETest(unittest.TestCase):
         time.sleep(1)
 
     # ------------------------------------------------------------------
-    # Tests run in alphabetical order; prefix with number for sequence
+    # Tests run in method name order; prefix with number for sequence.
+    # Each test loads the page fresh; server-side jobs may persist
+    # from previous tests, so we don't assume empty state.
     # ------------------------------------------------------------------
 
     def test_01_page_loads(self):
@@ -95,15 +103,12 @@ class DemoE2ETest(unittest.TestCase):
         print("\n[Test 01] Loading dashboard page...")
         self.driver.get(BASE_URL)
 
-        # Wait for Alpine.js to render the empty state
-        self.wait_for_text("No active profiling sessions")
+        self.wait_for_page_loaded()
 
         self.screenshot("01_initial_page_load")
 
-        # Verify title
         self.assertIn("MariaDB Query Profiler", self.driver.title)
 
-        # Verify heading
         heading = self.driver.find_element(By.TAG_NAME, "h1")
         self.assertIn("MariaDB Query Profiler", heading.text)
 
@@ -113,18 +118,16 @@ class DemoE2ETest(unittest.TestCase):
         """Start a profiling session and verify the tab appears."""
         print("\n[Test 02] Starting profiling session...")
         self.driver.get(BASE_URL)
-        self.wait_for_text("No active profiling sessions")
+        self.wait_for_page_loaded()
 
         self.start_session_and_wait()
         print("  Clicked 'Start Session'")
 
         self.screenshot("02_session_started")
 
-        # Verify RECORDING status is shown
         body_text = self.driver.find_element(By.TAG_NAME, "body").text
         self.assertIn("RECORDING", body_text)
 
-        # Wait for terminal to show connection messages
         time.sleep(2)
         self.screenshot("03_terminal_connected")
         print("  Session started, terminal connected")
@@ -133,19 +136,17 @@ class DemoE2ETest(unittest.TestCase):
         """Run demo queries and verify they execute."""
         print("\n[Test 03] Running demo queries...")
         self.driver.get(BASE_URL)
-        self.wait_for_text("No active profiling sessions")
+        self.wait_for_page_loaded()
 
-        # Start a new session first
+        # Start a new session
         self.start_session_and_wait()
 
-        # Now click "Run Demo Queries"
         query_btn = self.wait_clickable(
             By.XPATH, "//button[contains(., 'Run Demo Queries')]"
         )
         query_btn.click()
         print("  Clicked 'Run Demo Queries'")
 
-        # Wait for the success message to appear
         self.wait_for_text("queries executed")
         self.screenshot("04_queries_executed")
 
@@ -158,12 +159,12 @@ class DemoE2ETest(unittest.TestCase):
         """Stop the profiling session and verify it stops."""
         print("\n[Test 04] Stopping profiling session...")
         self.driver.get(BASE_URL)
-        self.wait_for_text("No active profiling sessions")
+        self.wait_for_page_loaded()
 
         # Start session
         self.start_session_and_wait()
 
-        # Run queries to have something captured
+        # Run queries
         query_btn = self.wait_clickable(
             By.XPATH, "//button[contains(., 'Run Demo Queries')]"
         )
@@ -178,7 +179,6 @@ class DemoE2ETest(unittest.TestCase):
         stop_btn.click()
         print("  Clicked 'Stop'")
 
-        # Wait for STOPPED status
         self.wait_for_text("STOPPED")
         time.sleep(1)
         self.screenshot("06_session_stopped")
@@ -191,7 +191,7 @@ class DemoE2ETest(unittest.TestCase):
         """Start multiple sessions and verify tabs work."""
         print("\n[Test 05] Testing multiple sessions...")
         self.driver.get(BASE_URL)
-        self.wait_for_text("No active profiling sessions")
+        self.wait_for_page_loaded()
 
         # Start first session
         self.start_session_and_wait()
@@ -202,7 +202,7 @@ class DemoE2ETest(unittest.TestCase):
 
         self.screenshot("07_multiple_sessions")
 
-        # Run queries (should be captured by both active sessions)
+        # Run queries
         query_btn = self.wait_clickable(
             By.XPATH, "//button[contains(., 'Run Demo Queries')]"
         )
