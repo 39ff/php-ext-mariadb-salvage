@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace MariadbProfiler;
 
 use PHPSQLParser\PHPSQLParser;
@@ -12,7 +10,7 @@ use PHPSQLParser\PHPSQLParser;
  */
 class SqlAnalyzer
 {
-    private PHPSQLParser $parser;
+    private $parser;
 
     public function __construct()
     {
@@ -23,9 +21,9 @@ class SqlAnalyzer
      * Analyze a SQL query and extract tables and columns.
      *
      * @param string $sql
-     * @return array{tables: string[], columns: string[]}
+     * @return array
      */
-    public function analyze(string $sql): array
+    public function analyze($sql)
     {
         $tables = [];
         $columns = [];
@@ -33,7 +31,7 @@ class SqlAnalyzer
 
         try {
             $parsed = $this->parser->parse($sql);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             // If parsing fails, return empty results
             return ['tables' => [], 'columns' => []];
         }
@@ -62,7 +60,7 @@ class SqlAnalyzer
     /**
      * Extract table names and aliases from parsed SQL.
      */
-    private function extractTables(array $parsed, array &$tables, array &$aliases): void
+    private function extractTables($parsed, &$tables, &$aliases)
     {
         // FROM clause
         if (isset($parsed['FROM'])) {
@@ -97,7 +95,7 @@ class SqlAnalyzer
     /**
      * Extract tables from a FROM/JOIN clause array.
      */
-    private function extractTablesFromClause(array $clause, array &$tables, array &$aliases): void
+    private function extractTablesFromClause($clause, &$tables, &$aliases)
     {
         foreach ($clause as $item) {
             if (!is_array($item)) {
@@ -108,7 +106,9 @@ class SqlAnalyzer
 
             if (isset($item['expr_type'])) {
                 if ($item['expr_type'] === 'table') {
-                    $tableName = $this->cleanIdentifier($item['table'] ?? ($item['base_expr'] ?? null));
+                    $tableName = $this->cleanIdentifier(
+                        isset($item['table']) ? $item['table'] : (isset($item['base_expr']) ? $item['base_expr'] : null)
+                    );
                 } elseif ($item['expr_type'] === 'subquery') {
                     // Recurse into subquery
                     if (isset($item['sub_tree'])) {
@@ -128,7 +128,7 @@ class SqlAnalyzer
 
                 // Record alias
                 if (isset($item['alias']) && is_array($item['alias'])) {
-                    $alias = $this->cleanIdentifier($item['alias']['name'] ?? '');
+                    $alias = $this->cleanIdentifier(isset($item['alias']['name']) ? $item['alias']['name'] : '');
                     if ($alias !== '') {
                         $aliases[$alias] = $tableName;
                     }
@@ -146,14 +146,16 @@ class SqlAnalyzer
     /**
      * Extract tables from INSERT clause.
      */
-    private function extractTablesFromInsert(array $clause, array &$tables, array &$aliases): void
+    private function extractTablesFromInsert($clause, &$tables, &$aliases)
     {
         foreach ($clause as $item) {
             if (!is_array($item)) {
                 continue;
             }
             if (isset($item['expr_type']) && $item['expr_type'] === 'table') {
-                $tableName = $this->cleanIdentifier($item['table'] ?? ($item['base_expr'] ?? null));
+                $tableName = $this->cleanIdentifier(
+                    isset($item['table']) ? $item['table'] : (isset($item['base_expr']) ? $item['base_expr'] : null)
+                );
                 if ($tableName && $tableName !== '') {
                     $tables[] = $tableName;
                 }
@@ -164,7 +166,7 @@ class SqlAnalyzer
     /**
      * Extract column names from various clauses.
      */
-    private function extractColumns(array $parsed, array &$columns, array &$aliases): void
+    private function extractColumns($parsed, &$columns, &$aliases)
     {
         // SELECT columns
         if (isset($parsed['SELECT'])) {
@@ -223,14 +225,14 @@ class SqlAnalyzer
     /**
      * Recursively extract column references from an expression tree.
      */
-    private function extractColumnsFromExpression(array $items, array &$columns, array &$aliases): void
+    private function extractColumnsFromExpression($items, &$columns, &$aliases)
     {
         foreach ($items as $item) {
             if (!is_array($item)) {
                 continue;
             }
 
-            $exprType = $item['expr_type'] ?? '';
+            $exprType = isset($item['expr_type']) ? $item['expr_type'] : '';
 
             if ($exprType === 'colref') {
                 $col = $this->resolveColumnRef($item, $aliases);
@@ -258,11 +260,13 @@ class SqlAnalyzer
 
     /**
      * Resolve a column reference to "table.column" format.
+     *
+     * @return string|null
      */
-    private function resolveColumnRef(array $item, array &$aliases): ?string
+    private function resolveColumnRef($item, &$aliases)
     {
-        $baseExpr = $item['base_expr'] ?? '';
-        $noQuotes = $item['no_quotes']['parts'] ?? null;
+        $baseExpr = isset($item['base_expr']) ? $item['base_expr'] : '';
+        $noQuotes = isset($item['no_quotes']['parts']) ? $item['no_quotes']['parts'] : null;
 
         if ($baseExpr === '*') {
             return null; // Skip bare wildcards
@@ -279,7 +283,7 @@ class SqlAnalyzer
                 }
 
                 // Resolve alias to real table name
-                $realTable = $aliases[$tableOrAlias] ?? $tableOrAlias;
+                $realTable = isset($aliases[$tableOrAlias]) ? $aliases[$tableOrAlias] : $tableOrAlias;
                 return $realTable . '.' . $column;
             } elseif (count($noQuotes) === 3) {
                 // schema.table.column
@@ -288,7 +292,7 @@ class SqlAnalyzer
                 if ($column === '*') {
                     return null;
                 }
-                $realTable = $aliases[$table] ?? $table;
+                $realTable = isset($aliases[$table]) ? $aliases[$table] : $table;
                 return $realTable . '.' . $column;
             } elseif (count($noQuotes) === 1) {
                 // Just column name without table prefix
@@ -312,7 +316,7 @@ class SqlAnalyzer
     /**
      * Clean a SQL identifier (remove backticks, quotes).
      */
-    private function cleanIdentifier(?string $identifier): string
+    private function cleanIdentifier($identifier)
     {
         if ($identifier === null || $identifier === '') {
             return '';

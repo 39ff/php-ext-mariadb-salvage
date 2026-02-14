@@ -1,8 +1,6 @@
 #!/usr/bin/env php
 <?php
 
-declare(strict_types=1);
-
 /**
  * MariaDB Query Profiler - CLI Tool
  *
@@ -63,9 +61,9 @@ for ($i = 0; $i < count($args); $i++) {
 }
 $args = $filteredArgs;
 
-$command = $args[0] ?? '';
-$subCommand = $args[1] ?? '';
-$key = $args[2] ?? '';
+$command = isset($args[0]) ? $args[0] : '';
+$subCommand = isset($args[1]) ? $args[1] : '';
+$key = isset($args[2]) ? $args[2] : '';
 
 if ($command !== 'job') {
     fwrite(STDERR, "[ERROR] Unknown command: {$command}\n");
@@ -107,7 +105,7 @@ switch ($subCommand) {
 // Command implementations
 // ============================================================================
 
-function cmdJobStart(JobManager $manager, string $key): void
+function cmdJobStart(JobManager $manager, $key)
 {
     if ($key === '') {
         // Auto-generate UUID if not provided
@@ -123,7 +121,7 @@ function cmdJobStart(JobManager $manager, string $key): void
     }
 }
 
-function cmdJobEnd(JobManager $manager, string $key): void
+function cmdJobEnd(JobManager $manager, $key)
 {
     if ($key === '') {
         fwrite(STDERR, "[ERROR] Job key is required.\n");
@@ -138,7 +136,7 @@ function cmdJobEnd(JobManager $manager, string $key): void
     }
 }
 
-function cmdJobList(JobManager $manager): void
+function cmdJobList(JobManager $manager)
 {
     $all = $manager->listAllJobs();
 
@@ -153,8 +151,8 @@ function cmdJobList(JobManager $manager): void
     if (!empty($activeJobs)) {
         fwrite(STDOUT, "ACTIVE JOBS:\n");
         foreach ($activeJobs as $key => $info) {
-            $started = date('Y-m-d H:i:s', (int)($info['started_at'] ?? 0));
-            $parent = $info['parent'] ?? '-';
+            $started = date('Y-m-d H:i:s', (int)(isset($info['started_at']) ? $info['started_at'] : 0));
+            $parent = isset($info['parent']) ? $info['parent'] : '-';
             fwrite(STDOUT, "  {$key}  started: {$started}  parent: {$parent}\n");
         }
     }
@@ -162,15 +160,15 @@ function cmdJobList(JobManager $manager): void
     if (!empty($completedJobs)) {
         fwrite(STDOUT, "\nCOMPLETED JOBS:\n");
         foreach ($completedJobs as $key => $info) {
-            $started = date('Y-m-d H:i:s', (int)($info['started_at'] ?? 0));
-            $ended = date('Y-m-d H:i:s', (int)($info['ended_at'] ?? 0));
-            $count = $info['query_count'] ?? 0;
+            $started = date('Y-m-d H:i:s', (int)(isset($info['started_at']) ? $info['started_at'] : 0));
+            $ended = date('Y-m-d H:i:s', (int)(isset($info['ended_at']) ? $info['ended_at'] : 0));
+            $count = isset($info['query_count']) ? $info['query_count'] : 0;
             fwrite(STDOUT, "  {$key}  started: {$started}  ended: {$ended}  queries: {$count}\n");
         }
     }
 }
 
-function cmdJobShow(JobManager $manager, string $key): void
+function cmdJobShow(JobManager $manager, $key)
 {
     if ($key === '') {
         fwrite(STDERR, "[ERROR] Job key is required.\n");
@@ -187,7 +185,7 @@ function cmdJobShow(JobManager $manager, string $key): void
     $analyzer = new SqlAnalyzer();
 
     foreach ($queries as $entry) {
-        $sql = $entry['q'] ?? '';
+        $sql = isset($entry['q']) ? $entry['q'] : '';
         if ($sql === '') {
             continue;
         }
@@ -205,7 +203,7 @@ function cmdJobShow(JobManager $manager, string $key): void
     }
 }
 
-function cmdJobRaw(JobManager $manager, string $key): void
+function cmdJobRaw(JobManager $manager, $key)
 {
     if ($key === '') {
         fwrite(STDERR, "[ERROR] Job key is required.\n");
@@ -222,7 +220,7 @@ function cmdJobRaw(JobManager $manager, string $key): void
     fwrite(STDOUT, $raw);
 }
 
-function cmdJobExport(JobManager $manager, string $key): void
+function cmdJobExport(JobManager $manager, $key)
 {
     if ($key === '') {
         fwrite(STDERR, "[ERROR] Job key is required.\n");
@@ -240,7 +238,7 @@ function cmdJobExport(JobManager $manager, string $key): void
     $parsed = [];
 
     foreach ($queries as $entry) {
-        $sql = $entry['q'] ?? '';
+        $sql = isset($entry['q']) ? $entry['q'] : '';
         if ($sql === '') {
             continue;
         }
@@ -252,7 +250,7 @@ function cmdJobExport(JobManager $manager, string $key): void
             'q' => $sql,
             't' => $result['tables'],
             'c' => $result['columns'],
-            'ts' => $entry['ts'] ?? null,
+            'ts' => isset($entry['ts']) ? $entry['ts'] : null,
         ];
     }
 
@@ -277,7 +275,7 @@ function cmdJobExport(JobManager $manager, string $key): void
     }
 }
 
-function cmdJobPurge(JobManager $manager): void
+function cmdJobPurge(JobManager $manager)
 {
     $count = $manager->purgeCompleted();
     fwrite(STDOUT, "[OK] Purged {$count} completed jobs.\n");
@@ -287,15 +285,24 @@ function cmdJobPurge(JobManager $manager): void
 // Helpers
 // ============================================================================
 
-function generateUuid(): string
+function generateUuid()
 {
-    $data = random_bytes(16);
+    if (function_exists('random_bytes')) {
+        $data = random_bytes(16);
+    } elseif (function_exists('openssl_random_pseudo_bytes')) {
+        $data = openssl_random_pseudo_bytes(16);
+    } else {
+        $data = '';
+        for ($i = 0; $i < 16; $i++) {
+            $data .= chr(mt_rand(0, 255));
+        }
+    }
     $data[6] = chr(ord($data[6]) & 0x0f | 0x40); // Version 4
     $data[8] = chr(ord($data[8]) & 0x3f | 0x80); // Variant
     return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
 }
 
-function showUsage(): void
+function showUsage()
 {
     $usage = <<<'USAGE'
 MariaDB Query Profiler - CLI Tool

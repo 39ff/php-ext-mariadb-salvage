@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php-version: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+        php-version: ['5.4', '5.5', '5.6', '7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
 
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +23,7 @@ jobs:
         with:
           php-version: ${{ matrix.php-version }}
           extensions: mysqlnd
-          tools: composer:v2
+          tools: ${{ startsWith(matrix.php-version, '5.') && 'composer:v1' || 'composer:v2' }}
 
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist

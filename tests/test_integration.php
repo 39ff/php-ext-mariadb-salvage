@@ -1,15 +1,13 @@
 #!/usr/bin/env php
 <?php
 
-declare(strict_types=1);
-
 /**
  * Integration test - simulates the full job workflow using the CLI tool.
  * This test does NOT require the C extension (tests CLI + PHPSQLParser only).
  */
 
 // Polyfill for PHP < 8.0
-function str_contains_compat(string $haystack, string $needle): bool
+function str_contains_compat($haystack, $needle)
 {
     return $needle === '' || strpos($haystack, $needle) !== false;
 }
@@ -19,7 +17,7 @@ $testDir = sys_get_temp_dir() . '/mariadb_profiler_integ_' . getmypid();
 $passed = 0;
 $failed = 0;
 
-function run(string $cmd): array
+function run($cmd)
 {
     $output = [];
     $code = 0;
@@ -27,7 +25,7 @@ function run(string $cmd): array
     return ['output' => implode("\n", $output), 'code' => $code];
 }
 
-function assert_test(string $name, bool $condition, string $detail = ''): void
+function assert_test($name, $condition, $detail = '')
 {
     global $passed, $failed;
     if ($condition) {
@@ -42,13 +40,16 @@ function assert_test(string $name, bool $condition, string $detail = ''): void
     }
 }
 
-function cleanup(string $dir): void
+function cleanup($dir)
 {
     if (!is_dir($dir)) {
         return;
     }
     $files = glob($dir . '/*');
-    foreach ($files ?: [] as $file) {
+    if (!$files) {
+        $files = [];
+    }
+    foreach ($files as $file) {
         if (is_file($file)) {
             unlink($file);
         }
@@ -123,33 +124,34 @@ $r = run("{$base} job show uuid1");
 assert_test('Show uuid1 has output', strlen($r['output']) > 50, $r['output']);
 
 // Parse each line and validate
-$lines = array_filter(explode("\n", $r['output']), fn($l) => trim($l) !== '');
+$lines = array_filter(explode("\n", $r['output']), function($l) { return trim($l) !== ''; });
+$lines = array_values($lines);
 assert_test('Show uuid1 has 5 lines', count($lines) === 5, "Got " . count($lines) . " lines");
 
 if (count($lines) >= 2) {
     $line2 = json_decode($lines[1], true);
+    $tables2 = is_array($line2) && isset($line2['t']) ? $line2['t'] : [];
+    $cols2 = is_array($line2) && isset($line2['c']) ? $line2['c'] : [];
     assert_test('Line 2 has tables users and orders',
-        is_array($line2) &&
-        in_array('users', $line2['t'] ?? []) &&
-        in_array('orders', $line2['t'] ?? []),
-        json_encode($line2['t'] ?? [])
+        in_array('users', $tables2) && in_array('orders', $tables2),
+        json_encode($tables2)
     );
     assert_test('Line 2 has column users.name',
-        is_array($line2) && in_array('users.name', $line2['c'] ?? []),
-        json_encode($line2['c'] ?? [])
+        in_array('users.name', $cols2),
+        json_encode($cols2)
     );
 }
 
 // Show parsed results for uuid2
 $r = run("{$base} job show uuid2");
-$lines = array_filter(explode("\n", $r['output']), fn($l) => trim($l) !== '');
+$lines = array_filter(explode("\n", $r['output']), function($l) { return trim($l) !== ''; });
+$lines = array_values($lines);
 if (count($lines) >= 1) {
     $line1 = json_decode($lines[0], true);
+    $tables1 = is_array($line1) && isset($line1['t']) ? $line1['t'] : [];
     assert_test('uuid2 has tables products and categories',
-        is_array($line1) &&
-        in_array('products', $line1['t'] ?? []) &&
-        in_array('categories', $line1['t'] ?? []),
-        json_encode($line1['t'] ?? [])
+        in_array('products', $tables1) && in_array('categories', $tables1),
+        json_encode($tables1)
     );
 }
 
@@ -165,7 +167,8 @@ assert_test('Parsed file exists', file_exists($testDir . '/uuid1.parsed.json'));
 if (file_exists($testDir . '/uuid1.parsed.json')) {
     $parsed = json_decode(file_get_contents($testDir . '/uuid1.parsed.json'), true);
     assert_test('Parsed JSON is valid array', is_array($parsed));
-    assert_test('Parsed JSON has 5 entries', count($parsed) === 5, "Got " . count($parsed ?? []));
+    $parsedCount = is_array($parsed) ? count($parsed) : 0;
+    assert_test('Parsed JSON has 5 entries', $parsedCount === 5, "Got " . $parsedCount);
 }
 
 // List should show all completed

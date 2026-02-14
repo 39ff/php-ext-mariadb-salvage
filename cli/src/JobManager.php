@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace MariadbProfiler;
 
 /**
@@ -9,12 +7,12 @@ namespace MariadbProfiler;
  */
 class JobManager
 {
-    private string $logDir;
-    private string $jobsFile;
+    private $logDir;
+    private $jobsFile;
 
-    public function __construct(?string $logDir = null)
+    public function __construct($logDir = null)
     {
-        $this->logDir = $logDir ?? $this->detectLogDir();
+        $this->logDir = $logDir !== null ? $logDir : $this->detectLogDir();
         $this->jobsFile = $this->logDir . '/jobs.json';
 
         if (!is_dir($this->logDir)) {
@@ -25,7 +23,7 @@ class JobManager
     /**
      * Detect log directory from php.ini or use default.
      */
-    private function detectLogDir(): string
+    private function detectLogDir()
     {
         $dir = ini_get('mariadb_profiler.log_dir');
         if ($dir && $dir !== '') {
@@ -34,7 +32,7 @@ class JobManager
         return '/tmp/mariadb_profiler';
     }
 
-    public function getLogDir(): string
+    public function getLogDir()
     {
         return $this->logDir;
     }
@@ -42,7 +40,7 @@ class JobManager
     /**
      * Start a new profiling job.
      */
-    public function startJob(string $key): bool
+    public function startJob($key)
     {
         $data = $this->readJobsFile();
 
@@ -57,8 +55,9 @@ class JobManager
             $latest = null;
             $latestTime = 0;
             foreach ($data['active_jobs'] as $k => $v) {
-                if (($v['started_at'] ?? 0) >= $latestTime) {
-                    $latestTime = $v['started_at'] ?? 0;
+                $startedAt = isset($v['started_at']) ? $v['started_at'] : 0;
+                if ($startedAt >= $latestTime) {
+                    $latestTime = $startedAt;
                     $latest = $k;
                 }
             }
@@ -80,7 +79,7 @@ class JobManager
      *
      * @return int|false Number of queries captured, or false on failure
      */
-    public function endJob(string $key)
+    public function endJob($key)
     {
         $data = $this->readJobsFile();
 
@@ -115,43 +114,43 @@ class JobManager
     /**
      * List all active jobs.
      *
-     * @return array<string, array>
+     * @return array
      */
-    public function listActiveJobs(): array
+    public function listActiveJobs()
     {
         $data = $this->readJobsFile();
-        return $data['active_jobs'] ?? [];
+        return isset($data['active_jobs']) ? $data['active_jobs'] : [];
     }
 
     /**
      * List all completed jobs.
      *
-     * @return array<string, array>
+     * @return array
      */
-    public function listCompletedJobs(): array
+    public function listCompletedJobs()
     {
         $data = $this->readJobsFile();
-        return $data['completed_jobs'] ?? [];
+        return isset($data['completed_jobs']) ? $data['completed_jobs'] : [];
     }
 
     /**
      * List all jobs (active + completed).
      */
-    public function listAllJobs(): array
+    public function listAllJobs()
     {
         $data = $this->readJobsFile();
         return [
-            'active' => $data['active_jobs'] ?? [],
-            'completed' => $data['completed_jobs'] ?? [],
+            'active' => isset($data['active_jobs']) ? $data['active_jobs'] : [],
+            'completed' => isset($data['completed_jobs']) ? $data['completed_jobs'] : [],
         ];
     }
 
     /**
      * Get raw queries for a job from the JSONL file.
      *
-     * @return array<array>
+     * @return array
      */
-    public function getJobQueries(string $key): array
+    public function getJobQueries($key)
     {
         $file = $this->logDir . '/' . $key . '.jsonl';
         if (!file_exists($file)) {
@@ -181,8 +180,10 @@ class JobManager
 
     /**
      * Get raw log content for a job.
+     *
+     * @return string|null
      */
-    public function getRawLog(string $key): ?string
+    public function getRawLog($key)
     {
         $file = $this->logDir . '/' . $key . '.raw.log';
         if (!file_exists($file)) {
@@ -194,7 +195,7 @@ class JobManager
     /**
      * Count queries in a job's JSONL file.
      */
-    private function countQueries(string $key): int
+    private function countQueries($key)
     {
         $file = $this->logDir . '/' . $key . '.jsonl';
         if (!file_exists($file)) {
@@ -220,7 +221,7 @@ class JobManager
     /**
      * Read jobs.json with shared lock.
      */
-    private function readJobsFile(): array
+    private function readJobsFile()
     {
         if (!file_exists($this->jobsFile)) {
             return ['active_jobs' => [], 'completed_jobs' => []];
@@ -258,7 +259,7 @@ class JobManager
     /**
      * Write jobs.json with exclusive lock.
      */
-    private function writeJobsFile(array $data): void
+    private function writeJobsFile($data)
     {
         $handle = fopen($this->jobsFile, 'c');
         if (!$handle) {
@@ -278,12 +279,13 @@ class JobManager
     /**
      * Remove all completed job data.
      */
-    public function purgeCompleted(): int
+    public function purgeCompleted()
     {
         $data = $this->readJobsFile();
-        $count = count($data['completed_jobs'] ?? []);
+        $completed = isset($data['completed_jobs']) ? $data['completed_jobs'] : [];
+        $count = count($completed);
 
-        foreach (array_keys($data['completed_jobs'] ?? []) as $key) {
+        foreach (array_keys($completed) as $key) {
             $this->removeJobFiles($key);
         }
 
@@ -296,7 +298,7 @@ class JobManager
     /**
      * Remove log files for a job.
      */
-    private function removeJobFiles(string $key): void
+    private function removeJobFiles($key)
     {
         $files = [
             $this->logDir . '/' . $key . '.jsonl',

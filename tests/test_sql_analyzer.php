@@ -1,8 +1,6 @@
 #!/usr/bin/env php
 <?php
 
-declare(strict_types=1);
-
 /**
  * Test suite for SqlAnalyzer
  */
@@ -15,7 +13,7 @@ $analyzer = new SqlAnalyzer();
 $passed = 0;
 $failed = 0;
 
-function test(string $name, string $sql, array $expectedTables, array $expectedColumns): void
+function test($name, $sql, $expectedTables, $expectedColumns)
 {
     global $analyzer, $passed, $failed;
 
@@ -42,7 +40,7 @@ function test(string $name, string $sql, array $expectedTables, array $expectedC
     }
 }
 
-function assertArrayEquals(array $expected, array $actual): bool
+function assertArrayEquals($expected, $actual)
 {
     $e = $expected;
     $a = $actual;
