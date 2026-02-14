@@ -48,9 +48,9 @@ typedef long zend_long;
 # define PHP_FE_END { NULL, NULL, NULL }
 #endif
 
-/* ---- ZEND_MOD_END ---- */
+/* ---- ZEND_MOD_END (4 fields: name, rel, version, type) ---- */
 #ifndef ZEND_MOD_END
-# define ZEND_MOD_END { NULL, NULL, 0 }
+# define ZEND_MOD_END { NULL, NULL, NULL, 0 }
 #endif
 
 /* ---- ZEND_MODULE_GLOBALS_ACCESSOR (introduced in PHP 7.0) ---- */

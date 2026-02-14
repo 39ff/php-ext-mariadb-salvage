@@ -31,7 +31,14 @@ extern zend_module_entry mariadb_profiler_module_entry;
 #if PHP_VERSION_ID >= 50400
 # include "ext/mysqlnd/mysqlnd_statistics.h"
 #endif
-#include "ext/mysqlnd/mysqlnd_ext_plugin.h"
+/*
+ * mysqlnd_ext_plugin.h was introduced in PHP 5.4; on PHP 5.3 the plugin
+ * registration functions (mysqlnd_plugin_register, mysqlnd_conn_get_methods,
+ * mysqlnd_stmt_get_methods) are declared directly in mysqlnd.h.
+ */
+#if PHP_VERSION_ID >= 50400
+# include "ext/mysqlnd/mysqlnd_ext_plugin.h"
+#endif
 
 /* Include compatibility layer (must come after php.h and mysqlnd headers) */
 #include "php_mariadb_profiler_compat.h"

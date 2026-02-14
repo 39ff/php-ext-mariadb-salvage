@@ -72,7 +72,8 @@ MYSQLND_METHOD(profiler_conn, query)(
 
 /* {{{ profiler_send_query_hook
  * send_query() signature changed between PHP versions:
- *   PHP 5.3-5.6: (conn, query, query_len, type, read_cb, err_cb TSRMLS_DC)
+ *   PHP 5.3-5.4: (conn, query, query_len TSRMLS_DC)
+ *   PHP 5.5-5.6: (conn, query, query_len, type, read_cb, err_cb TSRMLS_DC)
  *   PHP 7.0-8.0: (conn, query, query_len, type, read_cb, err_cb)
  *   PHP 8.1+:    (conn, query, query_len, read_cb, err_cb)
  */
@@ -107,11 +108,11 @@ MYSQLND_METHOD(profiler_conn, send_query)(
     }
     return orig_conn_data_methods->send_query(conn, query, query_len, type, read_cb, err_cb);
 }
-#else
-/* PHP 5.3-5.6: unsigned int, TSRMLS, with type param */
+#elif PHP_VERSION_ID >= 50500
+/* PHP 5.5-5.6: unsigned int, TSRMLS, with type param + callbacks */
 static enum_func_status
 MYSQLND_METHOD(profiler_conn, send_query)(
-    PROFILER_CONN_T *conn,
+    MYSQLND_CONN_DATA *conn,
     const char *query,
     unsigned int query_len,
     enum_mysqlnd_send_query_type type,
@@ -122,6 +123,19 @@ MYSQLND_METHOD(profiler_conn, send_query)(
         profiler_log_query(query, query_len);
     }
     return orig_conn_data_methods->send_query(conn, query, query_len, type, read_cb, err_cb TSRMLS_CC);
+}
+#else
+/* PHP 5.3-5.4: simple signature (conn, query, query_len TSRMLS_DC) */
+static enum_func_status
+MYSQLND_METHOD(profiler_conn, send_query)(
+    PROFILER_CONN_T *conn,
+    const char *query,
+    unsigned int query_len TSRMLS_DC)
+{
+    if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
+        profiler_log_query(query, query_len);
+    }
+    return orig_conn_data_methods->send_query(conn, query, query_len TSRMLS_CC);
 }
 #endif
 /* }}} */
