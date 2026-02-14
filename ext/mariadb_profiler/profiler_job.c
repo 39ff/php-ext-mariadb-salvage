@@ -24,6 +24,7 @@
 static char *profiler_job_get_jobs_path(void)
 {
     char *path;
+    TSRMLS_FETCH();
     spprintf(&path, 0, "%s/%s", PROFILER_G(log_dir), PROFILER_JOBS_FILENAME);
     return path;
 }
@@ -144,6 +145,7 @@ int profiler_job_refresh_active_jobs(void)
     struct stat st;
     char *buf = NULL;
     ssize_t bytes_read;
+    TSRMLS_FETCH();
 
     /* Free previous state */
     profiler_job_free_active_jobs();
@@ -193,6 +195,8 @@ int profiler_job_refresh_active_jobs(void)
 void profiler_job_free_active_jobs(void)
 {
     int i;
+    TSRMLS_FETCH();
+
     if (PROFILER_G(active_jobs)) {
         for (i = 0; i < PROFILER_G(active_job_count); i++) {
             if (PROFILER_G(active_jobs)[i]) {
@@ -211,6 +215,7 @@ void profiler_job_free_active_jobs(void)
 int profiler_job_is_any_active(void)
 {
     time_t now;
+    TSRMLS_FETCH();
 
     if (!PROFILER_G(enabled)) {
         return 0;
@@ -230,6 +235,8 @@ int profiler_job_is_any_active(void)
 /* {{{ profiler_job_get_active_list */
 char **profiler_job_get_active_list(int *count)
 {
+    TSRMLS_FETCH();
+
     if (count) {
         *count = PROFILER_G(active_job_count);
     }

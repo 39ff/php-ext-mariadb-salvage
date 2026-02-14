@@ -110,6 +110,7 @@ void profiler_log_raw(const char *job_key, const char *query, size_t query_len)
     char *filepath;
     FILE *fp;
     char *timestamp;
+    TSRMLS_FETCH();
 
     spprintf(&filepath, 0, "%s/%s%s", PROFILER_G(log_dir), job_key, PROFILER_RAW_LOG_EXT);
 
@@ -143,6 +144,7 @@ static void profiler_log_jsonl(const char *job_key, const char *query, size_t qu
     char *escaped_query;
     char *escaped_key;
     double ts;
+    TSRMLS_FETCH();
 
     spprintf(&filepath, 0, "%s/%s%s", PROFILER_G(log_dir), job_key, PROFILER_PARSED_LOG_EXT);
 
@@ -177,6 +179,7 @@ void profiler_log_query(const char *query, size_t query_len)
     char **jobs;
     int job_count;
     int i;
+    TSRMLS_FETCH();
 
     jobs = profiler_job_get_active_list(&job_count);
 
