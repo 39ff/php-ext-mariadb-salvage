@@ -8,20 +8,16 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Drop default Laravel users table if it exists and recreate with our schema
+        // Drop only our demo tables (keep default Laravel sessions/cache tables intact)
         Schema::dropIfExists('comments');
         Schema::dropIfExists('posts');
-        Schema::dropIfExists('sessions');
-        Schema::dropIfExists('password_reset_tokens');
-        Schema::dropIfExists('users');
 
-        Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->boolean('active')->default(true);
-            $table->timestamps();
-        });
+        // Add 'active' column to the default Laravel users table
+        if (Schema::hasTable('users') && !Schema::hasColumn('users', 'active')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->boolean('active')->default(true)->after('email');
+            });
+        }
 
         Schema::create('posts', function (Blueprint $table) {
             $table->id();
@@ -44,6 +40,11 @@ return new class extends Migration
     {
         Schema::dropIfExists('comments');
         Schema::dropIfExists('posts');
-        Schema::dropIfExists('users');
+
+        if (Schema::hasColumn('users', 'active')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->dropColumn('active');
+            });
+        }
     }
 };

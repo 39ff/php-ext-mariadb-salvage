@@ -37,6 +37,10 @@ COPY demo/laravel-app/database/seeders/ database/seeders/
 COPY demo/laravel-app/resources/views/ resources/views/
 COPY demo/laravel-app/routes/ routes/
 
+# Fix permissions for storage and cache
+RUN chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
+
 # Create profiler log directory
 RUN mkdir -p /var/profiler && chown www-data:www-data /var/profiler
 

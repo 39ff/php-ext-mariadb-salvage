@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class DemoSeeder extends Seeder
@@ -20,6 +21,7 @@ class DemoSeeder extends Seeder
                 'id' => $i + 1,
                 'name' => $name,
                 'email' => strtolower($name) . '@example.com',
+                'password' => Hash::make('password'),
                 'active' => $i < 6 ? 1 : 0,
                 'created_at' => $now,
                 'updated_at' => $now,
