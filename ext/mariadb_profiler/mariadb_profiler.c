@@ -3,6 +3,7 @@
   | MariaDB Query Profiler                                               |
   +----------------------------------------------------------------------+
   | Main module: lifecycle hooks and ini settings                        |
+  | Compatible with PHP 5.3 - 8.4+                                      |
   +----------------------------------------------------------------------+
 */
 
@@ -64,7 +65,7 @@ static void php_mariadb_profiler_init_globals(zend_mariadb_profiler_globals *g)
 /* }}} */
 
 /* {{{ Ensure log directory exists */
-static int profiler_ensure_log_dir(void)
+static int profiler_ensure_log_dir(TSRMLS_D)
 {
     struct stat st;
     const char *dir = PROFILER_G(log_dir);
@@ -77,7 +78,7 @@ static int profiler_ensure_log_dir(void)
         if (S_ISDIR(st.st_mode)) {
             return SUCCESS;
         }
-        php_error_docref(NULL, E_WARNING,
+        php_error_docref(NULL TSRMLS_CC, E_WARNING,
             "mariadb_profiler.log_dir '%s' exists but is not a directory", dir);
         return FAILURE;
     }
@@ -116,7 +117,7 @@ static int profiler_ensure_log_dir(void)
         }
 
         if (mkdir(tmp, 0777) != 0 && errno != EEXIST) {
-            php_error_docref(NULL, E_WARNING,
+            php_error_docref(NULL TSRMLS_CC, E_WARNING,
                 "mariadb_profiler: failed to create log_dir '%s': %s",
                 dir, strerror(errno));
             return FAILURE;
@@ -163,7 +164,7 @@ PHP_RINIT_FUNCTION(mariadb_profiler)
 
     if (PROFILER_G(enabled)) {
         /* Ensure log dir exists on first request */
-        profiler_ensure_log_dir();
+        profiler_ensure_log_dir(TSRMLS_C);
         /* Load active jobs at request start */
         profiler_job_refresh_active_jobs();
     }

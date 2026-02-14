@@ -1,8 +1,6 @@
 #!/usr/bin/env php
 <?php
 
-declare(strict_types=1);
-
 /**
  * Test suite for JobManager
  */
@@ -15,7 +13,7 @@ $testDir = sys_get_temp_dir() . '/mariadb_profiler_test_' . getmypid();
 $passed = 0;
 $failed = 0;
 
-function assert_true(string $name, bool $condition): void
+function assert_true($name, $condition)
 {
     global $passed, $failed;
     if ($condition) {
@@ -27,7 +25,7 @@ function assert_true(string $name, bool $condition): void
     }
 }
 
-function cleanup(string $dir): void
+function cleanup($dir)
 {
     if (!is_dir($dir)) {
         return;
@@ -61,7 +59,8 @@ assert_true('Start nested job test-002', $result === true);
 
 $active = $manager->listActiveJobs();
 assert_true('Both jobs are active', count($active) === 2);
-assert_true('test-002 parent is test-001', ($active['test-002']['parent'] ?? '') === 'test-001');
+$parent = isset($active['test-002']['parent']) ? $active['test-002']['parent'] : '';
+assert_true('test-002 parent is test-001', $parent === 'test-001');
 
 // Test: Cannot start duplicate job
 $result = $manager->startJob('test-001');
@@ -84,12 +83,14 @@ $active = $manager->listActiveJobs();
 $completed = $manager->listCompletedJobs();
 assert_true('test-002 no longer active', !isset($active['test-002']));
 assert_true('test-002 is completed', isset($completed['test-002']));
-assert_true('test-002 query count recorded', ($completed['test-002']['query_count'] ?? 0) === 2);
+$queryCount = isset($completed['test-002']['query_count']) ? $completed['test-002']['query_count'] : 0;
+assert_true('test-002 query count recorded', $queryCount === 2);
 
 // Test: Get queries
 $queries = $manager->getJobQueries('test-002');
 assert_true('Get queries returns 2 entries', count($queries) === 2);
-assert_true('First query correct', ($queries[0]['q'] ?? '') === 'SELECT id, name FROM users');
+$firstQuery = isset($queries[0]['q']) ? $queries[0]['q'] : '';
+assert_true('First query correct', $firstQuery === 'SELECT id, name FROM users');
 
 // Test: End remaining job
 $manager->endJob('test-001');

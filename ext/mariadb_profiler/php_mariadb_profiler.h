@@ -28,8 +28,20 @@ extern zend_module_entry mariadb_profiler_module_entry;
 
 #include "ext/mysqlnd/mysqlnd.h"
 #include "ext/mysqlnd/mysqlnd_structs.h"
-#include "ext/mysqlnd/mysqlnd_statistics.h"
-#include "ext/mysqlnd/mysqlnd_ext_plugin.h"
+#if PHP_VERSION_ID >= 50400
+# include "ext/mysqlnd/mysqlnd_statistics.h"
+#endif
+/*
+ * mysqlnd_ext_plugin.h was introduced in PHP 5.4; on PHP 5.3 the plugin
+ * registration functions (mysqlnd_plugin_register, mysqlnd_conn_get_methods,
+ * mysqlnd_stmt_get_methods) are declared directly in mysqlnd.h.
+ */
+#if PHP_VERSION_ID >= 50400
+# include "ext/mysqlnd/mysqlnd_ext_plugin.h"
+#endif
+
+/* Include compatibility layer (must come after php.h and mysqlnd headers) */
+#include "php_mariadb_profiler_compat.h"
 
 /* Module globals */
 ZEND_BEGIN_MODULE_GLOBALS(mariadb_profiler)
@@ -46,6 +58,12 @@ ZEND_END_MODULE_GLOBALS(mariadb_profiler)
 /* Globals accessor: extern declaration for use across compilation units */
 ZEND_EXTERN_MODULE_GLOBALS(mariadb_profiler)
 
+/*
+ * PROFILER_G accessor:
+ *   PHP 7.0+ ZTS: uses ZEND_MODULE_GLOBALS_ACCESSOR (TSRMG_FAST)
+ *   PHP 5.x  ZTS: uses TSRMG (provided by compat header)
+ *   NTS:          direct global access
+ */
 #ifdef ZTS
 #define PROFILER_G(v) ZEND_MODULE_GLOBALS_ACCESSOR(mariadb_profiler, v)
 #else
