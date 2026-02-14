@@ -18,14 +18,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup PHP
+      # For PHP 5.x: install deps with PHP 7.4 first (Composer v2 requires PHP 7.2+,
+      # and Packagist shut down Composer v1 support in Sep 2025)
+      - name: Setup PHP 7.4 for Composer
+        if: startsWith(matrix.php-version, '5.')
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          tools: composer:v2
+
+      - name: Install dependencies (PHP 5.x)
+        if: startsWith(matrix.php-version, '5.')
+        run: composer install --no-interaction --prefer-dist
+
+      # Switch to target PHP version for running tests
+      - name: Setup PHP ${{ matrix.php-version }}
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-version }}
           extensions: mysqlnd
-          tools: ${{ startsWith(matrix.php-version, '5.') && 'composer:v1' || 'composer:v2' }}
 
       - name: Install dependencies
+        if: ${{ !startsWith(matrix.php-version, '5.') }}
         run: composer install --no-interaction --prefer-dist
 
       - name: Run SqlAnalyzer tests
