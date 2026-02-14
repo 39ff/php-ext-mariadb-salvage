@@ -78,19 +78,55 @@ class DemoE2ETest(unittest.TestCase):
     def wait_for_page_loaded(self):
         """Wait for the dashboard page heading to appear."""
         self.wait_for(By.TAG_NAME, "h1")
-        # Give Alpine.js a moment to hydrate
-        time.sleep(1)
+        # Give Alpine.js a moment to hydrate and loadJobs() to complete
+        time.sleep(2)
+
+    def count_tab_buttons(self):
+        """Count the number of session tab buttons currently in the DOM."""
+        # Tab buttons have the animate-pulse or bg-gray-500 status dot
+        tabs = self.driver.find_elements(
+            By.XPATH, "//button[contains(@class, 'font-mono')]"
+        )
+        return len(tabs)
 
     def start_session_and_wait(self):
-        """Click Start Session and wait for RECORDING to appear."""
+        """Click Start Session and wait for a new tab to appear."""
+        tabs_before = self.count_tab_buttons()
+
         start_btn = self.wait_clickable(
             By.XPATH, "//button[contains(., 'Start Session')]"
         )
         start_btn.click()
-        # Wait until the RECORDING badge and terminal appear
-        self.wait_for_text("RECORDING")
-        # Give the terminal a moment to render its welcome message
-        time.sleep(1)
+
+        # Wait for a NEW tab to appear (not just existing RECORDING text)
+        WebDriverWait(self.driver, WAIT_TIMEOUT).until(
+            lambda d: self.count_tab_buttons() > tabs_before
+        )
+        # Give the terminal a moment to render
+        time.sleep(2)
+
+    def click_visible_stop_button(self):
+        """Find and click a visible Stop button using JavaScript.
+
+        Alpine.js nested x-show directives can make Selenium's
+        element_to_be_clickable unreliable; use JS as a robust fallback.
+        """
+        clicked = self.driver.execute_script("""
+            const buttons = document.querySelectorAll('button');
+            for (const btn of buttons) {
+                // Check visibility: offsetParent is null for display:none elements
+                if (btn.offsetParent === null) continue;
+                const text = btn.textContent.trim();
+                if (text === 'Stop' || text.includes('Stop')) {
+                    if (text.includes('Stopping')) continue;
+                    btn.scrollIntoView({block: 'center'});
+                    btn.click();
+                    return true;
+                }
+            }
+            return false;
+        """)
+        return clicked
 
     # ------------------------------------------------------------------
     # Tests run in method name order; prefix with number for sequence.
@@ -172,11 +208,14 @@ class DemoE2ETest(unittest.TestCase):
         self.wait_for_text("queries executed")
         time.sleep(2)
 
-        # Click Stop
-        stop_btn = self.wait_clickable(
-            By.XPATH, "//button[contains(., 'Stop')]"
+        # Take a pre-stop screenshot for debugging
+        self.screenshot("06a_before_stop")
+
+        # Click Stop using JS (robust against Alpine.js x-show nesting)
+        clicked = WebDriverWait(self.driver, WAIT_TIMEOUT).until(
+            lambda d: self.click_visible_stop_button()
         )
-        stop_btn.click()
+        self.assertTrue(clicked, "Could not find visible Stop button")
         print("  Clicked 'Stop'")
 
         self.wait_for_text("STOPPED")
