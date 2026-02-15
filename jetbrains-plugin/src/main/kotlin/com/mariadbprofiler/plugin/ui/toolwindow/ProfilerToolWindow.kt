@@ -37,9 +37,12 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
     private var tabbedPane: JTabbedPane? = null
     private var refreshTimer: Timer? = null
     private var currentJob: JobInfo? = null
-    private var currentEntries: List<QueryEntry> = emptyList()
+    private var currentEntries: MutableList<QueryEntry> = mutableListOf()
     private val liveTailTabIndex: Int get() = 2
     private val errorTabIndex: Int get() = 4 // Settings=3, Errors=4
+
+    /** Byte offset into the current job's JSONL file for incremental reads */
+    private var jsonlOffset: Long = 0
 
     private val errorChangeListener: () -> Unit = { updateErrorTabTitle() }
 
@@ -96,6 +99,9 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
 
     private fun onJobSelected(job: JobInfo?) {
         currentJob = job
+        jsonlOffset = 0
+        currentEntries.clear()
+
         if (job == null) {
             queryLogPanel.clear()
             queryDetailPanel.showEntry(null)
@@ -105,12 +111,15 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
         }
 
         try {
-            // Load queries for selected job
+            // Load all existing queries for the selected job
             val logParser = project.getService(LogParserService::class.java)
             val jobManager = project.getService(JobManagerService::class.java)
             val jsonlPath = jobManager.getJsonlPath(job.key)
 
-            currentEntries = logParser.parseJsonlFile(jsonlPath)
+            val (entries, newOffset) = logParser.parseJsonlFileFromOffset(jsonlPath, 0)
+            currentEntries = entries.toMutableList()
+            jsonlOffset = newOffset
+
             queryLogPanel.setEntries(currentEntries)
             queryDetailPanel.showEntry(null)
 
@@ -197,6 +206,37 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
         }
     }
 
+    /**
+     * Incrementally read new query entries from the current job's JSONL file.
+     * Only reads bytes after the last known offset.
+     */
+    private fun refreshQueryLog() {
+        val job = currentJob ?: return
+
+        try {
+            val logParser = project.getService(LogParserService::class.java)
+            val jobManager = project.getService(JobManagerService::class.java)
+            val jsonlPath = jobManager.getJsonlPath(job.key)
+
+            val (newEntries, newOffset) = logParser.parseJsonlFileFromOffset(jsonlPath, jsonlOffset)
+            if (newEntries.isEmpty()) return
+
+            jsonlOffset = newOffset
+            currentEntries.addAll(newEntries)
+
+            SwingUtilities.invokeLater {
+                queryLogPanel.addEntries(newEntries)
+
+                // Re-compute statistics with all entries
+                val statsService = project.getService(StatisticsService::class.java)
+                val stats = statsService.computeStats(currentEntries)
+                statisticsPanel.updateStats(stats)
+            }
+        } catch (e: Exception) {
+            log.debug("Error refreshing query log: ${e.message}")
+        }
+    }
+
     private fun updateErrorTabTitle() {
         SwingUtilities.invokeLater {
             val errorLog = project.getService(ErrorLogService::class.java)
@@ -213,6 +253,7 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
         refreshTimer?.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
                 refreshJobs()
+                refreshQueryLog()
             }
         }, 0, intervalMs)
     }
