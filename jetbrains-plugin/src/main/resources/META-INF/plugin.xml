@@ -1,0 +1,74 @@
+<idea-plugin>
+    <id>com.mariadbprofiler.plugin</id>
+    <name>MariaDB Profiler Viewer</name>
+    <version>0.1.0</version>
+    <vendor>mariadb-profiler</vendor>
+
+    <description><![CDATA[
+    Visualize and analyze MariaDB/MySQL query profiling data captured by the
+    php-ext-mariadb-salvage extension. View query logs, navigate backtraces,
+    monitor queries in real-time, and analyze SQL statistics from within your IDE.
+    ]]></description>
+
+    <idea-version since-build="233"/>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Tool Window -->
+        <toolWindow id="MariaDB Profiler"
+                    secondary="true"
+                    anchor="bottom"
+                    factoryClass="com.mariadbprofiler.plugin.ui.toolwindow.ProfilerToolWindowFactory"
+                    icon="/icons/profiler.svg"/>
+
+        <!-- Settings -->
+        <applicationConfigurable
+                parentId="tools"
+                instance="com.mariadbprofiler.plugin.settings.ProfilerConfigurable"
+                id="com.mariadbprofiler.plugin.settings.ProfilerConfigurable"
+                displayName="MariaDB Profiler"/>
+
+        <!-- Persistent State -->
+        <applicationService
+                serviceImplementation="com.mariadbprofiler.plugin.settings.ProfilerState"/>
+
+        <!-- Project Services -->
+        <projectService
+                serviceImplementation="com.mariadbprofiler.plugin.service.LogParserService"/>
+        <projectService
+                serviceImplementation="com.mariadbprofiler.plugin.service.JobManagerService"/>
+        <projectService
+                serviceImplementation="com.mariadbprofiler.plugin.service.FileWatcherService"/>
+        <projectService
+                serviceImplementation="com.mariadbprofiler.plugin.service.StatisticsService"/>
+        <projectService
+                serviceImplementation="com.mariadbprofiler.plugin.service.ErrorLogService"/>
+        <projectService
+                serviceImplementation="com.mariadbprofiler.plugin.service.FrameResolverService"/>
+    </extensions>
+
+    <actions>
+        <group id="MariaDbProfiler.ActionGroup"
+               text="MariaDB Profiler"
+               description="MariaDB Profiler actions"
+               popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+
+            <action id="MariaDbProfiler.StartJob"
+                    class="com.mariadbprofiler.plugin.action.StartJobAction"
+                    text="Start Profiling Job"
+                    description="Start a new profiling job"/>
+
+            <action id="MariaDbProfiler.StopJob"
+                    class="com.mariadbprofiler.plugin.action.StopJobAction"
+                    text="Stop Profiling Job"
+                    description="Stop the current profiling job"/>
+
+            <action id="MariaDbProfiler.OpenLog"
+                    class="com.mariadbprofiler.plugin.action.OpenLogAction"
+                    text="Open Profiler Log"
+                    description="Open a profiler log file"/>
+        </group>
+    </actions>
+</idea-plugin>
