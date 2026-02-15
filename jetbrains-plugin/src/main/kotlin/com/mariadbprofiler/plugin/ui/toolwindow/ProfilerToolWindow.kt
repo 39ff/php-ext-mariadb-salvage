@@ -18,10 +18,8 @@ import com.mariadbprofiler.plugin.settings.ProfilerState
 import com.mariadbprofiler.plugin.ui.panel.*
 import java.awt.BorderLayout
 import java.awt.Dimension
-import java.io.File
 import java.util.Timer
 import java.util.TimerTask
-import java.util.concurrent.TimeUnit
 import javax.swing.*
 
 class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()), Disposable {
@@ -133,105 +131,25 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
         queryDetailPanel.showEntry(entry)
     }
 
-    private fun resolveCliPath(): String {
-        val state = service<ProfilerState>()
-        val cliPath = state.cliScriptPath.ifEmpty {
-            val projectBase = project.basePath ?: ""
-            val candidate = File(projectBase, "cli/mariadb_profiler.php")
-            if (candidate.exists()) candidate.absolutePath else ""
-        }
-        return cliPath
-    }
-
     private fun onStartJob() {
-        val state = service<ProfilerState>()
-        val phpPath = state.phpPath
-        val cliPath = resolveCliPath()
-
-        if (cliPath.isEmpty()) {
-            val errorLog = project.getService(ErrorLogService::class.java)
-            errorLog.addError("StartJob", "CLI script path not configured")
-            Messages.showErrorDialog(
-                project,
-                "CLI script path not configured. Please set it in the Settings tab.",
-                "MariaDB Profiler"
-            )
-            return
-        }
-
+        val jobManager = project.getService(JobManagerService::class.java)
+        val errorLog = project.getService(ErrorLogService::class.java)
         jobListPanel.setStartEnabled(false)
 
         object : Task.Backgroundable(project, "Starting Profiling Session", false) {
             override fun run(indicator: ProgressIndicator) {
                 try {
-                    val logDir = service<ProfilerState>().logDir
-                    val process = ProcessBuilder(phpPath, cliPath, "--log-dir=$logDir", "job", "start")
-                        .redirectErrorStream(true)
-                        .start()
-
-                    val output = process.inputStream.bufferedReader().readText()
-                    val completed = process.waitFor(60, TimeUnit.SECONDS)
-
-                    val errorLog = project.getService(ErrorLogService::class.java)
-
-                    if (!completed) {
-                        process.destroyForcibly()
-                        errorLog.addError("StartJob", "Process timed out after 60 seconds")
-                        ApplicationManager.getApplication().invokeLater {
-                            jobListPanel.setStartEnabled(true)
-                            Messages.showErrorDialog(project, "Process timed out.", "MariaDB Profiler")
-                        }
-                        return
-                    }
-
-                    val exitCode = process.exitValue()
-
-                    // Log full CLI output for debugging
-                    val cmdLine = listOf(phpPath, cliPath, "--log-dir=$logDir", "job", "start").joinToString(" ")
-                    errorLog.addInfo("StartJob:cmd", cmdLine)
-                    errorLog.addInfo("StartJob:exit", "exit=$exitCode")
-                    errorLog.addInfo("StartJob:stdout", output.ifEmpty { "(empty)" })
-
-                    if (exitCode != 0) {
-                        errorLog.addError("StartJob", "Failed (exit code $exitCode): $output")
-                        ApplicationManager.getApplication().invokeLater {
-                            jobListPanel.setStartEnabled(true)
-                            Messages.showErrorDialog(project, "Failed to start job:\n$output", "MariaDB Profiler")
-                        }
-                        return
-                    }
-
-                    // Parse job key from output: "[INFO] Generated job key: <uuid>"
-                    val regex1 = Regex("""job key:\s*(\S+)""")
-                    val regex2 = Regex("""Job '([^']+)' started""")
-                    val match1 = regex1.find(output)
-                    val match2 = regex2.find(output)
-                    errorLog.addInfo("StartJob:regex1", "match=${match1?.value ?: "null"}")
-                    errorLog.addInfo("StartJob:regex2", "match=${match2?.value ?: "null"}")
-
-                    val jobKey = match1?.groupValues?.get(1) ?: match2?.groupValues?.get(1)
-                    errorLog.addInfo("StartJob", "Session started: ${jobKey ?: "unknown"}")
+                    val jobKey = jobManager.startJob()
+                    errorLog.addInfo("StartJob", "Session started: $jobKey")
 
                     ApplicationManager.getApplication().invokeLater {
                         jobListPanel.setStartEnabled(true)
                         refreshJobs()
-
-                        // Auto-select the new job and switch to Live Tail
-                        if (jobKey != null) {
-                            // Small delay to let refreshJobs populate the list
-                            Timer("select-new-job", true).schedule(object : TimerTask() {
-                                override fun run() {
-                                    SwingUtilities.invokeLater {
-                                        jobListPanel.selectJobByKey(jobKey)
-                                        tabbedPane?.selectedIndex = liveTailTabIndex
-                                    }
-                                }
-                            }, 500)
-                        }
+                        jobListPanel.selectJobByKey(jobKey)
+                        tabbedPane?.selectedIndex = liveTailTabIndex
                     }
                 } catch (ex: Exception) {
                     log.error("Failed to start profiling session", ex)
-                    val errorLog = project.getService(ErrorLogService::class.java)
                     errorLog.addError("StartJob", "Exception: ${ex.message}")
                     ApplicationManager.getApplication().invokeLater {
                         jobListPanel.setStartEnabled(true)
@@ -243,55 +161,20 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
     }
 
     private fun onStopJob(job: JobInfo) {
-        val state = service<ProfilerState>()
-        val phpPath = state.phpPath
-        val cliPath = resolveCliPath()
-
-        if (cliPath.isEmpty()) {
-            val errorLog = project.getService(ErrorLogService::class.java)
-            errorLog.addError("StopJob", "CLI script path not configured")
-            Messages.showErrorDialog(
-                project,
-                "CLI script path not configured. Please set it in the Settings tab.",
-                "MariaDB Profiler"
-            )
-            return
-        }
+        val jobManager = project.getService(JobManagerService::class.java)
+        val errorLog = project.getService(ErrorLogService::class.java)
 
         object : Task.Backgroundable(project, "Stopping Profiling Session", false) {
             override fun run(indicator: ProgressIndicator) {
                 try {
-                    val logDir = service<ProfilerState>().logDir
-                    val process = ProcessBuilder(phpPath, cliPath, "--log-dir=$logDir", "job", "end", job.key)
-                        .redirectErrorStream(true)
-                        .start()
-
-                    val output = process.inputStream.bufferedReader().readText()
-                    val completed = process.waitFor(60, TimeUnit.SECONDS)
-
-                    val errorLog = project.getService(ErrorLogService::class.java)
-
-                    if (!completed) {
-                        process.destroyForcibly()
-                        errorLog.addError("StopJob", "Process timed out after 60 seconds")
-                        ApplicationManager.getApplication().invokeLater {
-                            Messages.showErrorDialog(project, "Process timed out.", "MariaDB Profiler")
-                        }
-                        return
-                    }
-
-                    val exitCode = process.exitValue()
-                    errorLog.addInfo("StopJob", "Session stopped: ${job.key}")
+                    val queryCount = jobManager.stopJob(job.key)
+                    errorLog.addInfo("StopJob", "Session stopped: ${job.key} ($queryCount queries)")
 
                     ApplicationManager.getApplication().invokeLater {
-                        if (exitCode != 0) {
-                            Messages.showErrorDialog(project, "Failed to stop job:\n$output", "MariaDB Profiler")
-                        }
                         refreshJobs()
                     }
                 } catch (ex: Exception) {
                     log.error("Failed to stop profiling session", ex)
-                    val errorLog = project.getService(ErrorLogService::class.java)
                     errorLog.addError("StopJob", "Exception: ${ex.message}")
                     ApplicationManager.getApplication().invokeLater {
                         Messages.showErrorDialog(project, "Error: ${ex.message}", "MariaDB Profiler")
