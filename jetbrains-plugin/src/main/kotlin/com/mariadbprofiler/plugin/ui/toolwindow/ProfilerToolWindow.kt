@@ -185,6 +185,13 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
                     }
 
                     val exitCode = process.exitValue()
+
+                    // Log full CLI output for debugging
+                    val cmdLine = listOf(phpPath, cliPath, "--log-dir=$logDir", "job", "start").joinToString(" ")
+                    errorLog.addInfo("StartJob:cmd", cmdLine)
+                    errorLog.addInfo("StartJob:exit", "exit=$exitCode")
+                    errorLog.addInfo("StartJob:stdout", output.ifEmpty { "(empty)" })
+
                     if (exitCode != 0) {
                         errorLog.addError("StartJob", "Failed (exit code $exitCode): $output")
                         ApplicationManager.getApplication().invokeLater {
@@ -195,9 +202,14 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
                     }
 
                     // Parse job key from output: "[INFO] Generated job key: <uuid>"
-                    val jobKey = Regex("""job key:\s*(\S+)""").find(output)?.groupValues?.get(1)
-                        ?: Regex("""Job '([^']+)' started""").find(output)?.groupValues?.get(1)
+                    val regex1 = Regex("""job key:\s*(\S+)""")
+                    val regex2 = Regex("""Job '([^']+)' started""")
+                    val match1 = regex1.find(output)
+                    val match2 = regex2.find(output)
+                    errorLog.addInfo("StartJob:regex1", "match=${match1?.value ?: "null"}")
+                    errorLog.addInfo("StartJob:regex2", "match=${match2?.value ?: "null"}")
 
+                    val jobKey = match1?.groupValues?.get(1) ?: match2?.groupValues?.get(1)
                     errorLog.addInfo("StartJob", "Session started: ${jobKey ?: "unknown"}")
 
                     ApplicationManager.getApplication().invokeLater {
