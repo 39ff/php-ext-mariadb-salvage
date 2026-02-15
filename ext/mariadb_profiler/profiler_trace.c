@@ -13,6 +13,7 @@
 #endif
 
 #include "php.h"
+#include "zend_builtin_functions.h"
 #include "php_mariadb_profiler.h"
 #include "profiler_trace.h"
 
