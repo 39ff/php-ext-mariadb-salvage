@@ -7,9 +7,11 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.openapi.components.service
 import com.mariadbprofiler.plugin.model.BacktraceFrame
 import com.mariadbprofiler.plugin.model.QueryEntry
 import com.mariadbprofiler.plugin.service.FrameResolverService
+import com.mariadbprofiler.plugin.settings.ProfilerState
 import java.awt.*
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -140,6 +142,9 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
         val boldStart = if (isHighlighted) "<b>" else ""
         val boldEnd = if (isHighlighted) "</b>" else ""
 
+        val state = service<ProfilerState>()
+        val localPath = state.mapToLocalPath(frame.file)
+
         val normalColor = if (isHighlighted) JBColor(0x1B5E20, 0x66BB6A) else JBColor(0x2962FF, 0x82B1FF)
         val normalHtml = "<html>$boldStart$depthStr &lt;- $escaped$boldEnd</html>"
         val hoverHtml = "<html>$boldStart$depthStr &lt;- <u>$escaped</u>$boldEnd</html>"
@@ -147,7 +152,7 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
         val linkLabel = JBLabel(normalHtml).apply {
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             foreground = normalColor
-            toolTipText = "Click to open ${frame.file}:${frame.line}"
+            toolTipText = "Click to open $localPath:${frame.line}"
 
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent?) {
@@ -173,7 +178,9 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     private fun navigateToFile(filePath: String, line: Int) {
-        val vf = LocalFileSystem.getInstance().findFileByPath(filePath) ?: return
+        val state = service<ProfilerState>()
+        val localPath = state.mapToLocalPath(filePath)
+        val vf = LocalFileSystem.getInstance().findFileByPath(localPath) ?: return
         val descriptor = OpenFileDescriptor(project, vf, line - 1, 0)
         descriptor.navigate(true)
     }

@@ -38,7 +38,9 @@ class ProfilerState : PersistentStateComponent<ProfilerState.State> {
         var maxQueries: Int = 10000,
         var refreshInterval: Int = 5,
         var tailBufferSize: Int = 500,
-        var frameResolverScript: String = DEFAULT_FRAME_RESOLVER_SCRIPT
+        var frameResolverScript: String = DEFAULT_FRAME_RESOLVER_SCRIPT,
+        /** Path mappings for Docker: "remote=local" per line, e.g. "/var/www/html=/Users/me/project" */
+        var pathMappings: String = ""
     )
 
     private var myState = State()
@@ -76,4 +78,37 @@ class ProfilerState : PersistentStateComponent<ProfilerState.State> {
     var frameResolverScript: String
         get() = myState.frameResolverScript
         set(value) { myState.frameResolverScript = value }
+
+    var pathMappings: String
+        get() = myState.pathMappings
+        set(value) { myState.pathMappings = value }
+
+    /**
+     * Parse pathMappings into ordered list of (remote, local) pairs.
+     * Format: one mapping per line, "remote=local".
+     * Longer remote prefixes are matched first.
+     */
+    fun getPathMappingList(): List<Pair<String, String>> {
+        return pathMappings.lines()
+            .map { it.trim() }
+            .filter { it.contains("=") && !it.startsWith("#") }
+            .map {
+                val idx = it.indexOf('=')
+                it.substring(0, idx).trimEnd() to it.substring(idx + 1).trimStart()
+            }
+            .sortedByDescending { it.first.length }
+    }
+
+    /**
+     * Map a remote (Docker) file path to a local IDE path.
+     * Returns the original path if no mapping matches.
+     */
+    fun mapToLocalPath(remotePath: String): String {
+        for ((remote, local) in getPathMappingList()) {
+            if (remotePath.startsWith(remote)) {
+                return local + remotePath.removePrefix(remote)
+            }
+        }
+        return remotePath
+    }
 }

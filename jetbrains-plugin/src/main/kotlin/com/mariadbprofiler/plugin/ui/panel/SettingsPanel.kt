@@ -37,6 +37,14 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
             FileChooserDescriptorFactory.createSingleFileDescriptor("php")
         )
     }
+    private val pathMappingArea = JTextArea(3, 60).apply {
+        font = Font("JetBrains Mono", Font.PLAIN, 12).let { f ->
+            if (f.family == "JetBrains Mono") f else Font(Font.MONOSPACED, Font.PLAIN, 12)
+        }
+        tabSize = 4
+        toolTipText = "One mapping per line: /docker/path=/local/path"
+    }
+
     private val maxQueriesSpinner = JSpinner(SpinnerNumberModel(10000, 100, 100000, 1000))
     private val refreshIntervalSpinner = JSpinner(SpinnerNumberModel(5, 1, 60, 1))
     private val tailBufferSpinner = JSpinner(SpinnerNumberModel(500, 50, 10000, 100))
@@ -73,6 +81,29 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
         contentPanel.add(createLabeledField("PHP Executable Path:", phpPathField))
         contentPanel.add(Box.createVerticalStrut(6))
         contentPanel.add(createLabeledField("CLI Script Path:", cliScriptField))
+        contentPanel.add(Box.createVerticalStrut(16))
+
+        // Path Mapping section
+        contentPanel.add(createSectionTitle("Path Mapping (Docker)"))
+        contentPanel.add(Box.createVerticalStrut(4))
+        contentPanel.add(JBLabel("Maps Docker container paths to local IDE paths for backtrace navigation.").apply {
+            foreground = JBColor.GRAY
+            font = font.deriveFont(11f)
+            alignmentX = LEFT_ALIGNMENT
+        })
+        contentPanel.add(Box.createVerticalStrut(2))
+        contentPanel.add(JBLabel("  Format: /docker/path=/local/path  (one per line)").apply {
+            foreground = JBColor.GRAY
+            font = font.deriveFont(11f)
+            alignmentX = LEFT_ALIGNMENT
+        })
+        contentPanel.add(Box.createVerticalStrut(4))
+        val pathMappingScrollPane = JBScrollPane(pathMappingArea).apply {
+            alignmentX = LEFT_ALIGNMENT
+            preferredSize = Dimension(Int.MAX_VALUE, 80)
+            minimumSize = Dimension(200, 60)
+        }
+        contentPanel.add(pathMappingScrollPane)
         contentPanel.add(Box.createVerticalStrut(16))
 
         // Performance section
@@ -152,6 +183,7 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
         maxQueriesSpinner.value = state.maxQueries
         refreshIntervalSpinner.value = state.refreshInterval
         tailBufferSpinner.value = state.tailBufferSize
+        pathMappingArea.text = state.pathMappings
         scriptArea.text = state.frameResolverScript
         scriptErrorLabel.text = ""
         statusLabel.text = ""
@@ -165,6 +197,7 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
         state.maxQueries = maxQueriesSpinner.value as Int
         state.refreshInterval = refreshIntervalSpinner.value as Int
         state.tailBufferSize = tailBufferSpinner.value as Int
+        state.pathMappings = pathMappingArea.text
         state.frameResolverScript = scriptArea.text
 
         // Invalidate cached script so it recompiles on next use
