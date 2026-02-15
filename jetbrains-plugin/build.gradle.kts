@@ -12,8 +12,16 @@ repositories {
     mavenCentral()
 }
 
+// Standalone configuration for deps to bundle into plugin JAR (not extending implementation
+// to avoid pulling in IDE platform JARs that the intellij plugin adds transitively)
+val bundledDeps: Configuration by configurations.creating {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+}
+
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+    bundledDeps("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("junit:junit:4.13.2")
 }
@@ -22,12 +30,6 @@ intellij {
     version.set("2023.3")
     type.set("IC") // IntelliJ Community - compatible with PhpStorm
     plugins.set(listOf())
-}
-
-// Collect implementation-only dependencies (excludes IDE platform JARs)
-val bundledDeps: Configuration by configurations.creating {
-    extendsFrom(configurations.implementation.get())
-    isCanBeResolved = true
 }
 
 tasks {
@@ -43,6 +45,7 @@ tasks {
                 .map { zipTree(it) }
         }) {
             exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/MANIFEST.MF")
+            exclude("META-INF/*.xml")
             exclude("META-INF/versions/**")
         }
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE
