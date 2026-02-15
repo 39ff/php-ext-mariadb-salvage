@@ -23,8 +23,9 @@ data class QueryEntry(
      * Query with `?` placeholders replaced by bound values.
      *
      * Only replaces `?` characters that appear **outside** single-quoted SQL
-     * string literals.  Doubled single-quotes (`''`) inside a literal are
-     * treated as an escaped quote and do not toggle the "inside string" state.
+     * string literals.  Handles both doubled single-quotes (`''`) and backslash
+     * escapes (`\'`, `\\`, etc.) inside literals, matching MySQL/MariaDB default
+     * behavior (when `NO_BACKSLASH_ESCAPES` is not set).
      *
      * Param values are wrapped in single quotes with internal single-quotes
      * doubled (`O'Brien` → `'O''Brien'`); NULL params are emitted bare.
@@ -42,7 +43,17 @@ data class QueryEntry(
                 val ch = query[i]
 
                 if (inString) {
-                    if (ch == '\'') {
+                    if (ch == '\\') {
+                        /* backslash escape: \' \\ etc. – copy both chars, stay in string */
+                        if (i + 1 < query.length) {
+                            sb.append(ch)
+                            sb.append(query[i + 1])
+                            i += 2
+                            continue
+                        }
+                        /* trailing backslash – just append it */
+                        sb.append(ch)
+                    } else if (ch == '\'') {
                         /* '' inside a literal is an escaped quote – stay in string */
                         if (i + 1 < query.length && query[i + 1] == '\'') {
                             sb.append("''")
