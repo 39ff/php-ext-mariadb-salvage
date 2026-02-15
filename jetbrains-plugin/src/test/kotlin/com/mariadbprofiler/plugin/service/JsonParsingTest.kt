@@ -13,11 +13,11 @@ class JsonParsingTest {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     @Test
-    fun `parse JSONL content manually`() {
+    fun `parse JSONL content with actual PHP field names`() {
         val lines = listOf(
-            """{"query":"SELECT * FROM users","timestamp":1705970401.0,"tags":["api"],"backtrace":[]}""",
-            """{"query":"INSERT INTO logs (msg) VALUES ('test')","timestamp":1705970402.0,"tags":[],"backtrace":[]}""",
-            """{"query":"UPDATE users SET name = 'foo'","timestamp":1705970403.0,"tags":["web"],"backtrace":[]}"""
+            """{"k":"job1","q":"SELECT * FROM users","ts":1705970401.0,"tag":"api"}""",
+            """{"k":"job1","q":"INSERT INTO logs (msg) VALUES ('test')","ts":1705970402.0}""",
+            """{"k":"job1","q":"UPDATE users SET name = 'foo'","ts":1705970403.0,"tag":"web"}"""
         )
 
         val entries = lines.map { json.decodeFromString<QueryEntry>(it) }
@@ -26,7 +26,9 @@ class JsonParsingTest {
         assertEquals(QueryType.SELECT, entries[0].queryType)
         assertEquals(QueryType.INSERT, entries[1].queryType)
         assertEquals(QueryType.UPDATE, entries[2].queryType)
+        assertEquals("SELECT * FROM users", entries[0].query)
         assertEquals(listOf("api"), entries[0].tags)
+        assertEquals(emptyList(), entries[1].tags)
     }
 
     @Test
@@ -34,8 +36,8 @@ class JsonParsingTest {
         val tempFile = File.createTempFile("profiler_test", ".jsonl")
         try {
             tempFile.writeText(
-                """{"query":"SELECT 1","timestamp":1.0,"tags":[],"backtrace":[]}
-{"query":"SELECT 2","timestamp":2.0,"tags":[],"backtrace":[]}
+                """{"k":"job1","q":"SELECT 1","ts":1.0}
+{"k":"job1","q":"SELECT 2","ts":2.0}
 """
             )
 
@@ -60,9 +62,9 @@ class JsonParsingTest {
     @Test
     fun `skip malformed lines gracefully`() {
         val lines = listOf(
-            """{"query":"SELECT 1","timestamp":1.0,"tags":[],"backtrace":[]}""",
+            """{"k":"job1","q":"SELECT 1","ts":1.0}""",
             """not valid json""",
-            """{"query":"SELECT 2","timestamp":2.0,"tags":[],"backtrace":[]}"""
+            """{"k":"job1","q":"SELECT 2","ts":2.0}"""
         )
 
         val entries = mutableListOf<QueryEntry>()
@@ -79,23 +81,22 @@ class JsonParsingTest {
 
     @Test
     fun `parse entry with backtrace frames`() {
-        val line = """{"query":"SELECT * FROM users","timestamp":1.0,"tags":["api"],"backtrace":[{"file":"/app/UserController.php","line":42,"function":"index","class_name":"UserController"}]}"""
+        val line = """{"k":"job1","q":"SELECT * FROM users","ts":1.0,"tag":"api","trace":[{"call":"UserController->index","file":"/app/UserController.php","line":42}]}"""
         val entry = json.decodeFromString<QueryEntry>(line)
 
         assertEquals(1, entry.backtrace.size)
         assertEquals("/app/UserController.php", entry.backtrace[0].file)
         assertEquals(42, entry.backtrace[0].line)
-        assertEquals("index", entry.backtrace[0].function)
-        assertEquals("UserController", entry.backtrace[0].class_name)
+        assertEquals("UserController->index", entry.backtrace[0].call)
     }
 
     @Test
     fun `statistics computation from entries`() {
         val entries = listOf(
-            QueryEntry(query = "SELECT * FROM users", timestamp = 1.0, tags = listOf("api")),
-            QueryEntry(query = "SELECT * FROM posts", timestamp = 2.0, tags = listOf("api")),
-            QueryEntry(query = "INSERT INTO logs (msg) VALUES ('x')", timestamp = 3.0, tags = listOf("web")),
-            QueryEntry(query = "UPDATE users SET name='y'", timestamp = 4.0, tags = listOf("api"))
+            QueryEntry(query = "SELECT * FROM users", timestamp = 1.0, tag = "api"),
+            QueryEntry(query = "SELECT * FROM posts", timestamp = 2.0, tag = "api"),
+            QueryEntry(query = "INSERT INTO logs (msg) VALUES ('x')", timestamp = 3.0, tag = "web"),
+            QueryEntry(query = "UPDATE users SET name='y'", timestamp = 4.0, tag = "api")
         )
 
         val byType = entries.groupBy { it.queryType }.mapValues { it.value.size }
