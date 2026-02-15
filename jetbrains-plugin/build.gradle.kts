@@ -24,9 +24,28 @@ intellij {
     plugins.set(listOf())
 }
 
+// Collect implementation-only dependencies (excludes IDE platform JARs)
+val bundledDeps: Configuration by configurations.creating {
+    extendsFrom(configurations.implementation.get())
+    isCanBeResolved = true
+}
+
 tasks {
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         kotlinOptions.jvmTarget = "17"
+    }
+
+    jar {
+        // Bundle implementation dependencies (kotlinx-serialization) into the plugin JAR
+        from(provider {
+            bundledDeps
+                .filter { it.extension == "jar" }
+                .map { zipTree(it) }
+        }) {
+            exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/MANIFEST.MF")
+            exclude("META-INF/versions/**")
+        }
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     }
 
     patchPluginXml {
