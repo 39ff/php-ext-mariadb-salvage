@@ -1,5 +1,6 @@
 package com.mariadbprofiler.plugin.ui.panel
 
+import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
@@ -9,6 +10,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.mariadbprofiler.plugin.model.BacktraceFrame
 import com.mariadbprofiler.plugin.model.QueryEntry
+import com.mariadbprofiler.plugin.settings.ProfilerState
 import java.awt.*
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -81,7 +83,7 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
         // Backtrace panel
         val btPanel = JPanel(BorderLayout()).apply {
             border = BorderFactory.createTitledBorder("Backtrace")
-            add(JBScrollPane(backtracePanel).apply { preferredSize = Dimension(0, 100) })
+            add(JBScrollPane(backtracePanel).apply { preferredSize = Dimension(0, 200) })
         }
 
         contentPanel.apply {
@@ -108,10 +110,15 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
         tablesLabel.text = entry.tables.joinToString(", ").ifEmpty { "-" }
         tagsLabel.text = entry.tags.joinToString(", ").ifEmpty { "-" }
 
-        // Build backtrace links
+        // Determine highlighted depth from tag-depth mapping
+        val state = service<ProfilerState>()
+        val highlightDepth = state.getDepthForTag(entry.tag)
+
+        // Build backtrace links with depth numbers
         backtracePanel.removeAll()
-        entry.backtrace.forEach { frame ->
-            backtracePanel.add(createBacktraceLink(frame))
+        entry.backtrace.forEachIndexed { index, frame ->
+            val isHighlighted = index == highlightDepth
+            backtracePanel.add(createBacktraceLink(frame, index, isHighlighted))
         }
         if (entry.backtrace.isEmpty()) {
             backtracePanel.add(JBLabel("  (no backtrace)").apply {
@@ -128,29 +135,39 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
         cardLayout.show(cardPanel, "empty")
     }
 
-    private fun createBacktraceLink(frame: BacktraceFrame): JComponent {
+    private fun createBacktraceLink(frame: BacktraceFrame, depth: Int, isHighlighted: Boolean): JComponent {
         val escaped = StringUtil.escapeXmlEntities(frame.displayText)
-        val linkLabel = JBLabel("<html>  -&gt; $escaped</html>").apply {
+        val depthStr = "#$depth".padEnd(4)
+        val boldStart = if (isHighlighted) "<b>" else ""
+        val boldEnd = if (isHighlighted) "</b>" else ""
+
+        val normalColor = if (isHighlighted) JBColor(0x1B5E20, 0x66BB6A) else JBColor(0x2962FF, 0x82B1FF)
+        val normalHtml = "<html>$boldStart$depthStr &lt;- $escaped$boldEnd</html>"
+        val hoverHtml = "<html>$boldStart$depthStr &lt;- <u>$escaped</u>$boldEnd</html>"
+
+        val linkLabel = JBLabel(normalHtml).apply {
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            foreground = JBColor(0x2962FF, 0x82B1FF)
+            foreground = normalColor
             toolTipText = "Click to open ${frame.file}:${frame.line}"
 
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent?) {
                     navigateToFile(frame.file, frame.line)
                 }
-
                 override fun mouseEntered(e: MouseEvent?) {
-                    text = "<html>  -&gt; <u>$escaped</u></html>"
+                    text = hoverHtml
                 }
-
                 override fun mouseExited(e: MouseEvent?) {
-                    text = "<html>  -&gt; $escaped</html>"
+                    text = normalHtml
                 }
             })
         }
 
         return JPanel(FlowLayout(FlowLayout.LEFT, 0, 1)).apply {
+            if (isHighlighted) {
+                background = JBColor(Color(0xE8F5E9), Color(0x1B3A1B))
+                isOpaque = true
+            }
             add(linkLabel)
             maximumSize = Dimension(Int.MAX_VALUE, 24)
         }

@@ -18,7 +18,9 @@ class ProfilerState : PersistentStateComponent<ProfilerState.State> {
         var cliScriptPath: String = "",
         var maxQueries: Int = 10000,
         var refreshInterval: Int = 5,
-        var tailBufferSize: Int = 500
+        var tailBufferSize: Int = 500,
+        /** Tag-to-depth mapping, e.g. "laravel=8,symfony=7,default=0" */
+        var tagDepthMapping: String = "default=0"
     )
 
     private var myState = State()
@@ -52,4 +54,31 @@ class ProfilerState : PersistentStateComponent<ProfilerState.State> {
     var tailBufferSize: Int
         get() = myState.tailBufferSize
         set(value) { myState.tailBufferSize = value }
+
+    var tagDepthMapping: String
+        get() = myState.tagDepthMapping
+        set(value) { myState.tagDepthMapping = value }
+
+    /**
+     * Parse tagDepthMapping into a Map.
+     * Format: "laravel=8,symfony=7,default=0"
+     */
+    fun getTagDepthMap(): Map<String, Int> {
+        return tagDepthMapping.split(",")
+            .map { it.trim() }
+            .filter { it.contains("=") }
+            .associate {
+                val (tag, depth) = it.split("=", limit = 2)
+                tag.trim() to (depth.trim().toIntOrNull() ?: 0)
+            }
+    }
+
+    /**
+     * Get the depth for a given tag. Falls back to "default" entry, then 0.
+     */
+    fun getDepthForTag(tag: String?): Int {
+        val map = getTagDepthMap()
+        if (tag != null && map.containsKey(tag)) return map[tag]!!
+        return map["default"] ?: 0
+    }
 }

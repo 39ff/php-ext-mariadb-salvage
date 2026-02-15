@@ -40,9 +40,10 @@ class QueryLogPanel(
             columnModel.getColumn(1).maxWidth = 120
             columnModel.getColumn(2).preferredWidth = 70   // Type
             columnModel.getColumn(2).maxWidth = 80
-            columnModel.getColumn(3).preferredWidth = 400  // SQL
-            columnModel.getColumn(4).preferredWidth = 120  // Tags
-            columnModel.getColumn(5).preferredWidth = 200  // File
+            columnModel.getColumn(3).preferredWidth = 300  // SQL
+            columnModel.getColumn(4).preferredWidth = 80   // Tags
+            columnModel.getColumn(5).preferredWidth = 250  // Function
+            columnModel.getColumn(6).preferredWidth = 180  // File
 
             selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
             selectionModel.addListSelectionListener { e ->

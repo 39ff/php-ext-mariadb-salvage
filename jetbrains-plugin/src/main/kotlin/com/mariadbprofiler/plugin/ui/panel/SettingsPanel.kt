@@ -39,6 +39,9 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
     private val maxQueriesSpinner = JSpinner(SpinnerNumberModel(10000, 100, 100000, 1000))
     private val refreshIntervalSpinner = JSpinner(SpinnerNumberModel(5, 1, 60, 1))
     private val tailBufferSpinner = JSpinner(SpinnerNumberModel(500, 50, 10000, 100))
+    private val tagDepthField = JTextField().apply {
+        toolTipText = "Tag=Depth pairs, comma-separated. e.g. laravel=8,symfony=7,default=0"
+    }
 
     private val statusLabel = JBLabel("").apply { foreground = JBColor.GRAY }
 
@@ -71,6 +74,24 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
         contentPanel.add(createLabeledField("Auto-refresh Interval (sec):", refreshIntervalSpinner))
         contentPanel.add(Box.createVerticalStrut(6))
         contentPanel.add(createLabeledField("Live Tail Buffer Size:", tailBufferSpinner))
+        contentPanel.add(Box.createVerticalStrut(16))
+
+        // Backtrace section
+        contentPanel.add(createSectionTitle("Backtrace Display"))
+        contentPanel.add(Box.createVerticalStrut(4))
+        contentPanel.add(createLabeledField("Tag Depth Mapping:", tagDepthField))
+        contentPanel.add(Box.createVerticalStrut(2))
+        contentPanel.add(JBLabel("  Format: tag=depth,tag=depth  (e.g. laravel=8,default=0)").apply {
+            foreground = JBColor.GRAY
+            font = font.deriveFont(11f)
+            alignmentX = LEFT_ALIGNMENT
+        })
+        contentPanel.add(Box.createVerticalStrut(2))
+        contentPanel.add(JBLabel("  The depth selects which backtrace frame to show in Query Log columns.").apply {
+            foreground = JBColor.GRAY
+            font = font.deriveFont(11f)
+            alignmentX = LEFT_ALIGNMENT
+        })
         contentPanel.add(Box.createVerticalStrut(16))
 
         // Buttons
@@ -107,6 +128,7 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
         maxQueriesSpinner.value = state.maxQueries
         refreshIntervalSpinner.value = state.refreshInterval
         tailBufferSpinner.value = state.tailBufferSize
+        tagDepthField.text = state.tagDepthMapping
         statusLabel.text = ""
     }
 
@@ -118,6 +140,7 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
         state.maxQueries = maxQueriesSpinner.value as Int
         state.refreshInterval = refreshIntervalSpinner.value as Int
         state.tailBufferSize = tailBufferSpinner.value as Int
+        state.tagDepthMapping = tagDepthField.text
 
         statusLabel.text = "Settings saved."
         statusLabel.foreground = JBColor(0x2E7D32, 0x81C784)
