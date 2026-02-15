@@ -11,7 +11,7 @@ class QueryEntryTest {
 
     @Test
     fun `parse basic query entry from JSON`() {
-        val jsonStr = """{"query":"SELECT * FROM users WHERE id = 1","timestamp":1705970401.123,"tags":["api"],"backtrace":[]}"""
+        val jsonStr = """{"k":"job1","q":"SELECT * FROM users WHERE id = 1","ts":1705970401.123,"tag":"api"}"""
         val entry = json.decodeFromString<QueryEntry>(jsonStr)
 
         assertEquals("SELECT * FROM users WHERE id = 1", entry.query)
@@ -73,11 +73,11 @@ class QueryEntryTest {
     fun `parse entry with backtrace`() {
         val jsonStr = """
         {
-            "query": "SELECT * FROM users",
-            "timestamp": 1705970401.0,
-            "tags": [],
-            "backtrace": [
-                {"file": "/app/Controllers/UserController.php", "line": 42, "function": "index", "class_name": "UserController"}
+            "k": "job1",
+            "q": "SELECT * FROM users",
+            "ts": 1705970401.0,
+            "trace": [
+                {"call": "UserController->index", "file": "/app/Controllers/UserController.php", "line": 42}
             ]
         }
         """.trimIndent()
