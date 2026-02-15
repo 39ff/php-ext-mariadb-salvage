@@ -12,16 +12,8 @@ repositories {
     mavenCentral()
 }
 
-// Standalone configuration for deps to bundle into plugin JAR (not extending implementation
-// to avoid pulling in IDE platform JARs that the intellij plugin adds transitively)
-val bundledDeps: Configuration by configurations.creating {
-    isCanBeResolved = true
-    isCanBeConsumed = false
-}
-
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
-    bundledDeps("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("junit:junit:4.13.2")
 }
@@ -35,20 +27,6 @@ intellij {
 tasks {
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         kotlinOptions.jvmTarget = "17"
-    }
-
-    jar {
-        // Bundle implementation dependencies (kotlinx-serialization) into the plugin JAR
-        from(provider {
-            bundledDeps
-                .filter { it.extension == "jar" }
-                .map { zipTree(it) }
-        }) {
-            exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/MANIFEST.MF")
-            exclude("META-INF/*.xml")
-            exclude("META-INF/versions/**")
-        }
-        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     }
 
     patchPluginXml {
