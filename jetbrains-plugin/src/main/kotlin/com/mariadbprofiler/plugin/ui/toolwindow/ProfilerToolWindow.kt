@@ -11,6 +11,7 @@ import com.intellij.openapi.ui.Messages
 import com.mariadbprofiler.plugin.model.JobInfo
 import com.mariadbprofiler.plugin.model.QueryEntry
 import com.mariadbprofiler.plugin.service.ErrorLogService
+import com.mariadbprofiler.plugin.service.FrameResolverService
 import com.mariadbprofiler.plugin.service.JobManagerService
 import com.mariadbprofiler.plugin.service.LogParserService
 import com.mariadbprofiler.plugin.service.StatisticsService
@@ -47,6 +48,10 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
     private val errorChangeListener: () -> Unit = { updateErrorTabTitle() }
 
     init {
+        // Wire up FrameResolverService
+        val frameResolver = project.getService(FrameResolverService::class.java)
+        queryLogPanel.setFrameResolver(frameResolver)
+
         setupUI()
         startRefreshTimer()
 

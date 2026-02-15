@@ -8,6 +8,7 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.mariadbprofiler.plugin.service.ErrorLogService
+import com.mariadbprofiler.plugin.service.FrameResolverService
 import com.mariadbprofiler.plugin.settings.ProfilerState
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -39,8 +40,16 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
     private val maxQueriesSpinner = JSpinner(SpinnerNumberModel(10000, 100, 100000, 1000))
     private val refreshIntervalSpinner = JSpinner(SpinnerNumberModel(5, 1, 60, 1))
     private val tailBufferSpinner = JSpinner(SpinnerNumberModel(500, 50, 10000, 100))
-    private val tagDepthField = JTextField().apply {
-        toolTipText = "Tag=Depth pairs, comma-separated. e.g. laravel=8,symfony=7,default=0"
+
+    private val scriptArea = JTextArea(12, 60).apply {
+        font = Font("JetBrains Mono", Font.PLAIN, 12).let { f ->
+            if (f.family == "JetBrains Mono") f else Font(Font.MONOSPACED, Font.PLAIN, 12)
+        }
+        tabSize = 4
+    }
+    private val scriptErrorLabel = JBLabel("").apply {
+        foreground = JBColor(0xD32F2F, 0xEF5350)
+        font = font.deriveFont(11f)
     }
 
     private val statusLabel = JBLabel("").apply { foreground = JBColor.GRAY }
@@ -76,22 +85,37 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
         contentPanel.add(createLabeledField("Live Tail Buffer Size:", tailBufferSpinner))
         contentPanel.add(Box.createVerticalStrut(16))
 
-        // Backtrace section
-        contentPanel.add(createSectionTitle("Backtrace Display"))
+        // Frame Resolver Script section
+        contentPanel.add(createSectionTitle("Frame Resolver Script (Groovy)"))
         contentPanel.add(Box.createVerticalStrut(4))
-        contentPanel.add(createLabeledField("Tag Depth Mapping:", tagDepthField))
-        contentPanel.add(Box.createVerticalStrut(2))
-        contentPanel.add(JBLabel("  Format: tag=depth,tag=depth  (e.g. laravel=8,default=0)").apply {
+        contentPanel.add(JBLabel("Determines which backtrace frame to show in Query Log columns.").apply {
             foreground = JBColor.GRAY
             font = font.deriveFont(11f)
             alignmentX = LEFT_ALIGNMENT
         })
-        contentPanel.add(Box.createVerticalStrut(2))
-        contentPanel.add(JBLabel("  The depth selects which backtrace frame to show in Query Log columns.").apply {
-            foreground = JBColor.GRAY
-            font = font.deriveFont(11f)
+        contentPanel.add(Box.createVerticalStrut(4))
+
+        val scriptScrollPane = JBScrollPane(scriptArea).apply {
             alignmentX = LEFT_ALIGNMENT
+            preferredSize = Dimension(Int.MAX_VALUE, 220)
+            minimumSize = Dimension(200, 120)
+        }
+        contentPanel.add(scriptScrollPane)
+        contentPanel.add(Box.createVerticalStrut(4))
+
+        // Script buttons
+        val scriptButtonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+            alignmentX = LEFT_ALIGNMENT
+            maximumSize = Dimension(Int.MAX_VALUE, 30)
+        }
+        scriptButtonPanel.add(JButton("Reset to Default").apply {
+            addActionListener {
+                scriptArea.text = ProfilerState.DEFAULT_FRAME_RESOLVER_SCRIPT
+            }
         })
+        contentPanel.add(scriptButtonPanel)
+        contentPanel.add(Box.createVerticalStrut(2))
+        contentPanel.add(scriptErrorLabel.apply { alignmentX = LEFT_ALIGNMENT })
         contentPanel.add(Box.createVerticalStrut(16))
 
         // Buttons
@@ -128,7 +152,8 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
         maxQueriesSpinner.value = state.maxQueries
         refreshIntervalSpinner.value = state.refreshInterval
         tailBufferSpinner.value = state.tailBufferSize
-        tagDepthField.text = state.tagDepthMapping
+        scriptArea.text = state.frameResolverScript
+        scriptErrorLabel.text = ""
         statusLabel.text = ""
     }
 
@@ -140,7 +165,19 @@ class SettingsPanel(private val project: Project) : JPanel(BorderLayout()) {
         state.maxQueries = maxQueriesSpinner.value as Int
         state.refreshInterval = refreshIntervalSpinner.value as Int
         state.tailBufferSize = tailBufferSpinner.value as Int
-        state.tagDepthMapping = tagDepthField.text
+        state.frameResolverScript = scriptArea.text
+
+        // Invalidate cached script so it recompiles on next use
+        val resolver = project.getService(FrameResolverService::class.java)
+        resolver.invalidateCache()
+
+        // Check for compilation errors
+        val error = resolver.getCompilationError()
+        if (error != null) {
+            scriptErrorLabel.text = "Script error: $error"
+        } else {
+            scriptErrorLabel.text = ""
+        }
 
         statusLabel.text = "Settings saved."
         statusLabel.foreground = JBColor(0x2E7D32, 0x81C784)

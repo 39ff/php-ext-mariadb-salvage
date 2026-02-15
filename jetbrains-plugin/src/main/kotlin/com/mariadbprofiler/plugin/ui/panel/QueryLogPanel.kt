@@ -5,6 +5,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
 import com.mariadbprofiler.plugin.model.QueryEntry
 import com.mariadbprofiler.plugin.model.QueryType
+import com.mariadbprofiler.plugin.service.FrameResolverService
 import com.mariadbprofiler.plugin.ui.table.QueryCellRenderer
 import com.mariadbprofiler.plugin.ui.table.QueryTableModel
 import java.awt.BorderLayout
@@ -18,6 +19,10 @@ class QueryLogPanel(
 ) : JPanel(BorderLayout()) {
 
     private val tableModel = QueryTableModel()
+
+    fun setFrameResolver(resolver: FrameResolverService) {
+        tableModel.frameResolver = resolver
+    }
     val table = JBTable(tableModel)
     private val searchField = SearchTextField()
     private var filterButtons: Map<QueryType?, JToggleButton> = emptyMap()

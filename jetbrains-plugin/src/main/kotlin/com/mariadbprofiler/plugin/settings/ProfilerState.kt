@@ -12,6 +12,25 @@ import com.intellij.openapi.components.Storage
 )
 class ProfilerState : PersistentStateComponent<ProfilerState.State> {
 
+    companion object {
+        val DEFAULT_FRAME_RESOLVER_SCRIPT = """
+            // Available variables:
+            //   trace - List of frames (each has: file, line, call, function, class_name)
+            //   tag   - Query tag (String, may be null)
+            //   query - SQL query (String)
+            // Return: index of the backtrace frame to display (int)
+
+            // === Tag-to-depth mapping ===
+            def depthMap = [
+                'default': 0
+            ]
+
+            def depth = depthMap[tag ?: 'default'] ?: depthMap['default'] ?: 0
+            if (depth < trace.size()) return depth
+            return 0
+        """.trimIndent()
+    }
+
     data class State(
         var logDir: String = "/tmp/mariadb_profiler",
         var phpPath: String = "php",
@@ -19,8 +38,7 @@ class ProfilerState : PersistentStateComponent<ProfilerState.State> {
         var maxQueries: Int = 10000,
         var refreshInterval: Int = 5,
         var tailBufferSize: Int = 500,
-        /** Tag-to-depth mapping, e.g. "laravel=8,symfony=7,default=0" */
-        var tagDepthMapping: String = "default=0"
+        var frameResolverScript: String = DEFAULT_FRAME_RESOLVER_SCRIPT
     )
 
     private var myState = State()
@@ -55,30 +73,7 @@ class ProfilerState : PersistentStateComponent<ProfilerState.State> {
         get() = myState.tailBufferSize
         set(value) { myState.tailBufferSize = value }
 
-    var tagDepthMapping: String
-        get() = myState.tagDepthMapping
-        set(value) { myState.tagDepthMapping = value }
-
-    /**
-     * Parse tagDepthMapping into a Map.
-     * Format: "laravel=8,symfony=7,default=0"
-     */
-    fun getTagDepthMap(): Map<String, Int> {
-        return tagDepthMapping.split(",")
-            .map { it.trim() }
-            .filter { it.contains("=") }
-            .associate {
-                val (tag, depth) = it.split("=", limit = 2)
-                tag.trim() to (depth.trim().toIntOrNull() ?: 0)
-            }
-    }
-
-    /**
-     * Get the depth for a given tag. Falls back to "default" entry, then 0.
-     */
-    fun getDepthForTag(tag: String?): Int {
-        val map = getTagDepthMap()
-        if (tag != null && map.containsKey(tag)) return map[tag]!!
-        return map["default"] ?: 0
-    }
+    var frameResolverScript: String
+        get() = myState.frameResolverScript
+        set(value) { myState.frameResolverScript = value }
 }

@@ -1,6 +1,5 @@
 package com.mariadbprofiler.plugin.ui.panel
 
-import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
@@ -10,7 +9,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.mariadbprofiler.plugin.model.BacktraceFrame
 import com.mariadbprofiler.plugin.model.QueryEntry
-import com.mariadbprofiler.plugin.settings.ProfilerState
+import com.mariadbprofiler.plugin.service.FrameResolverService
 import java.awt.*
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -110,9 +109,9 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
         tablesLabel.text = entry.tables.joinToString(", ").ifEmpty { "-" }
         tagsLabel.text = entry.tags.joinToString(", ").ifEmpty { "-" }
 
-        // Determine highlighted depth from tag-depth mapping
-        val state = service<ProfilerState>()
-        val highlightDepth = state.getDepthForTag(entry.tag)
+        // Determine highlighted depth from Groovy frame resolver
+        val resolver = project.getService(FrameResolverService::class.java)
+        val highlightDepth = resolver.resolve(entry)
 
         // Build backtrace links with depth numbers
         backtracePanel.removeAll()
