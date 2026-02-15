@@ -122,9 +122,17 @@ private class QueryTypeBarChart(
     private val total: Int
 ) : JPanel() {
 
+    companion object {
+        private const val BAR_HEIGHT = 20
+        private const val GAP = 4
+        private const val INITIAL_Y = 4
+        private const val TYPE_COUNT = 4
+        val REQUIRED_HEIGHT = TYPE_COUNT * (BAR_HEIGHT + GAP) + INITIAL_Y
+    }
+
     init {
-        preferredSize = Dimension(400, 60)
-        maximumSize = Dimension(Int.MAX_VALUE, 60)
+        preferredSize = Dimension(400, REQUIRED_HEIGHT)
+        maximumSize = Dimension(Int.MAX_VALUE, REQUIRED_HEIGHT)
         alignmentX = LEFT_ALIGNMENT
     }
 

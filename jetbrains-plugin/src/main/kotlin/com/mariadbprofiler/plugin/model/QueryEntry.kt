@@ -37,7 +37,7 @@ data class QueryEntry(
 
     val sourceFile: String
         get() = backtrace.firstOrNull()?.let {
-            "${it.file.substringAfterLast('/')}:${it.line}"
+            "${java.io.File(it.file).name}:${it.line}"
         } ?: ""
 
     val tables: List<String>

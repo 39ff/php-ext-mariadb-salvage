@@ -38,10 +38,10 @@ class JobManagerService(private val project: Project) {
             val jobs = mutableListOf<JobInfo>()
 
             jobsFile.activeJobs.forEach { (key, data) ->
-                jobs.add(data.toJobInfo(key))
+                jobs.add(data.toJobInfo(key, isActive = true))
             }
             jobsFile.completedJobs.forEach { (key, data) ->
-                jobs.add(data.toJobInfo(key))
+                jobs.add(data.toJobInfo(key, isActive = false))
             }
 
             jobs.sortedByDescending { it.startedAt }
@@ -73,13 +73,14 @@ class JobManagerService(private val project: Project) {
             ?: emptyList()
     }
 
-    private fun JobData.toJobInfo(key: String): JobInfo {
+    private fun JobData.toJobInfo(key: String, isActive: Boolean): JobInfo {
         return JobInfo(
             key = key,
             startedAt = startedAt,
             endedAt = endedAt,
             queryCount = queryCount,
-            parent = parent
+            parent = parent,
+            isActive = isActive
         )
     }
 }

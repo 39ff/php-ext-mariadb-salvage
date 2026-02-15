@@ -8,7 +8,7 @@ import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class LogParserServiceTest {
+class JsonParsingTest {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 

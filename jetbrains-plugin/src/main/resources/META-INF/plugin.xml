@@ -10,6 +10,8 @@
     monitor queries in real-time, and analyze SQL statistics from within your IDE.
     ]]></description>
 
+    <idea-version since-build="233"/>
+
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">

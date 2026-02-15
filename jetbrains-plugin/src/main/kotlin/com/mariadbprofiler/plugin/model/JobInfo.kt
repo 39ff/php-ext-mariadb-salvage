@@ -2,6 +2,7 @@ package com.mariadbprofiler.plugin.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class JobInfo(
@@ -12,11 +13,10 @@ data class JobInfo(
     val endedAt: Double? = null,
     @SerialName("query_count")
     val queryCount: Int? = null,
-    val parent: String? = null
+    val parent: String? = null,
+    @Transient
+    val isActive: Boolean = true
 ) {
-    val isActive: Boolean
-        get() = endedAt == null
-
     val formattedStartedAt: String
         get() = formatTimestamp(startedAt)
 

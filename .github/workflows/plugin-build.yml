@@ -28,16 +28,14 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.5'
 
       - name: Run tests
         working-directory: jetbrains-plugin
-        run: gradle test
+        run: ./gradlew test
 
       - name: Build plugin
         working-directory: jetbrains-plugin
-        run: gradle buildPlugin
+        run: ./gradlew buildPlugin
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4

@@ -5,7 +5,11 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.mariadbprofiler.plugin.model.QueryEntry
 import kotlinx.serialization.json.Json
+import java.io.BufferedReader
 import java.io.File
+import java.io.FileInputStream
+import java.io.InputStreamReader
+import java.nio.charset.StandardCharsets
 
 @Service(Service.Level.PROJECT)
 class LogParserService(private val project: Project) {
@@ -43,15 +47,16 @@ class LogParserService(private val project: Project) {
     fun parseJsonlFileFromOffset(filePath: String, offset: Long): Pair<List<QueryEntry>, Long> {
         val file = File(filePath)
         if (!file.exists() || !file.canRead()) {
-            return Pair(emptyList(), 0L)
+            return Pair(emptyList(), offset)
         }
 
         val entries = mutableListOf<QueryEntry>()
-        val raf = java.io.RandomAccessFile(file, "r")
+        val fis = FileInputStream(file)
         try {
-            raf.seek(offset)
-            var line = raf.readLine()
-            while (line != null) {
+            val channel = fis.channel
+            channel.position(offset)
+            val reader = BufferedReader(InputStreamReader(fis, StandardCharsets.UTF_8))
+            reader.forEachLine { line ->
                 val trimmed = line.trim()
                 if (trimmed.isNotEmpty()) {
                     try {
@@ -60,11 +65,10 @@ class LogParserService(private val project: Project) {
                         log.debug("Failed to parse incremental line: ${e.message}")
                     }
                 }
-                line = raf.readLine()
             }
-            return Pair(entries, raf.filePointer)
+            return Pair(entries, channel.position())
         } finally {
-            raf.close()
+            fis.close()
         }
     }
 
@@ -74,30 +78,38 @@ class LogParserService(private val project: Project) {
             return emptyList()
         }
 
-        val lines = file.readLines()
-        return if (lines.size > maxLines) lines.takeLast(maxLines) else lines
+        val buffer = ArrayDeque<String>(maxLines)
+        file.useLines { lines ->
+            lines.forEach { line ->
+                if (buffer.size >= maxLines) {
+                    buffer.removeFirst()
+                }
+                buffer.addLast(line)
+            }
+        }
+        return buffer.toList()
     }
 
     fun tailRawLog(filePath: String, fromOffset: Long): Pair<List<String>, Long> {
         val file = File(filePath)
         if (!file.exists() || !file.canRead()) {
-            return Pair(emptyList(), 0L)
+            return Pair(emptyList(), fromOffset)
         }
 
-        val raf = java.io.RandomAccessFile(file, "r")
+        val fis = FileInputStream(file)
         try {
-            raf.seek(fromOffset)
+            val channel = fis.channel
+            channel.position(fromOffset)
+            val reader = BufferedReader(InputStreamReader(fis, StandardCharsets.UTF_8))
             val lines = mutableListOf<String>()
-            var line = raf.readLine()
-            while (line != null) {
+            reader.forEachLine { line ->
                 if (line.isNotEmpty()) {
                     lines.add(line)
                 }
-                line = raf.readLine()
             }
-            return Pair(lines, raf.filePointer)
+            return Pair(lines, channel.position())
         } finally {
-            raf.close()
+            fis.close()
         }
     }
 }

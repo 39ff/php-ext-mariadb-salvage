@@ -11,7 +11,7 @@ data class BacktraceFrame(
 ) {
     val displayText: String
         get() {
-            val fileName = file.substringAfterLast('/')
+            val fileName = java.io.File(file).name
             val caller = if (class_name.isNotEmpty()) "$class_name::$function" else function
             return "$fileName:$line  $caller()"
         }

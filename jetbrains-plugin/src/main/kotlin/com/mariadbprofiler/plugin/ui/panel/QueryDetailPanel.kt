@@ -2,6 +2,7 @@ package com.mariadbprofiler.plugin.ui.panel
 
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
@@ -128,7 +129,8 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     private fun createBacktraceLink(frame: BacktraceFrame): JComponent {
-        val linkLabel = JBLabel("  -> ${frame.displayText}").apply {
+        val escaped = StringUtil.escapeXmlEntities(frame.displayText)
+        val linkLabel = JBLabel("<html>  -&gt; $escaped</html>").apply {
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             foreground = JBColor(0x2962FF, 0x82B1FF)
             toolTipText = "Click to open ${frame.file}:${frame.line}"
@@ -139,11 +141,11 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
                 }
 
                 override fun mouseEntered(e: MouseEvent?) {
-                    text = "  -> <html><u>${frame.displayText}</u></html>"
+                    text = "<html>  -&gt; <u>$escaped</u></html>"
                 }
 
                 override fun mouseExited(e: MouseEvent?) {
-                    text = "  -> ${frame.displayText}"
+                    text = "<html>  -&gt; $escaped</html>"
                 }
             })
         }

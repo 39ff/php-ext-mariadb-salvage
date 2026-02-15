@@ -1,11 +1,14 @@
 package com.mariadbprofiler.plugin.ui.toolwindow
 
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.mariadbprofiler.plugin.model.JobInfo
 import com.mariadbprofiler.plugin.model.QueryEntry
 import com.mariadbprofiler.plugin.service.JobManagerService
 import com.mariadbprofiler.plugin.service.LogParserService
 import com.mariadbprofiler.plugin.service.StatisticsService
+import com.mariadbprofiler.plugin.settings.ProfilerState
 import com.mariadbprofiler.plugin.ui.panel.*
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -13,7 +16,7 @@ import java.util.Timer
 import java.util.TimerTask
 import javax.swing.*
 
-class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()) {
+class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()), Disposable {
 
     private val jobListPanel = JobListPanel(::onJobSelected)
     private val queryLogPanel = QueryLogPanel(::onQuerySelected)
@@ -114,15 +117,17 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()) 
     }
 
     private fun startRefreshTimer() {
+        val state = service<ProfilerState>()
+        val intervalMs = (state.refreshInterval.coerceAtLeast(1) * 1000).toLong()
         refreshTimer = Timer("MariaDB-Profiler-Refresh", true)
         refreshTimer?.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
                 refreshJobs()
             }
-        }, 0, 5000)
+        }, 0, intervalMs)
     }
 
-    fun dispose() {
+    override fun dispose() {
         refreshTimer?.cancel()
         refreshTimer = null
     }

@@ -13,7 +13,7 @@ class JobInfoTest {
 
     @Test
     fun `active job has no end time`() {
-        val job = JobInfo(key = "test-key", startedAt = 1705970401.0)
+        val job = JobInfo(key = "test-key", startedAt = 1705970401.0, isActive = true)
         assertTrue(job.isActive)
         assertNull(job.endedAt)
         assertEquals("running...", job.formattedDuration)
@@ -25,7 +25,8 @@ class JobInfoTest {
             key = "test-key",
             startedAt = 1705970401.0,
             endedAt = 1705970411.0,
-            queryCount = 42
+            queryCount = 42,
+            isActive = false
         )
         assertFalse(job.isActive)
         assertEquals(10.0, job.durationSeconds)
@@ -37,7 +38,8 @@ class JobInfoTest {
         val job = JobInfo(
             key = "test",
             startedAt = 1705970401.0,
-            endedAt = 1705970401.5
+            endedAt = 1705970401.5,
+            isActive = false
         )
         assertEquals("500 ms", job.formattedDuration)
     }
@@ -47,7 +49,8 @@ class JobInfoTest {
         val job = JobInfo(
             key = "test",
             startedAt = 1705970401.0,
-            endedAt = 1705970581.0 // 180 seconds
+            endedAt = 1705970581.0, // 180 seconds
+            isActive = false
         )
         assertEquals("3.0 min", job.formattedDuration)
     }

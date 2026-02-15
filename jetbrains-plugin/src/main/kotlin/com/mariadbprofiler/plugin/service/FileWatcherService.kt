@@ -15,6 +15,7 @@ class FileWatcherService(private val project: Project) : Disposable {
     private val log = Logger.getInstance(FileWatcherService::class.java)
 
     private var timer: Timer? = null
+    private val timerLock = Any()
     private val watchers = ConcurrentHashMap<String, FileWatcher>()
 
     data class FileWatcher(
@@ -48,19 +49,23 @@ class FileWatcherService(private val project: Project) : Disposable {
     }
 
     private fun ensureTimerRunning() {
-        if (timer == null) {
-            timer = Timer("MariaDB-Profiler-FileWatcher", true)
-            timer?.scheduleAtFixedRate(object : TimerTask() {
-                override fun run() {
-                    checkFiles()
-                }
-            }, 1000, 1000)
+        synchronized(timerLock) {
+            if (timer == null) {
+                timer = Timer("MariaDB-Profiler-FileWatcher", true)
+                timer?.scheduleAtFixedRate(object : TimerTask() {
+                    override fun run() {
+                        checkFiles()
+                    }
+                }, 1000, 1000)
+            }
         }
     }
 
     private fun stopTimer() {
-        timer?.cancel()
-        timer = null
+        synchronized(timerLock) {
+            timer?.cancel()
+            timer = null
+        }
     }
 
     private fun checkFiles() {
