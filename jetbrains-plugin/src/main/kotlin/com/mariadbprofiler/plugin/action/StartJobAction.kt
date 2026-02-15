@@ -8,6 +8,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.ui.Messages
+import com.mariadbprofiler.plugin.service.ErrorLogService
 import com.mariadbprofiler.plugin.settings.ProfilerState
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -28,9 +29,11 @@ class StartJobAction : AnAction() {
         }
 
         if (cliPath.isEmpty()) {
+            val errorLog = project.getService(ErrorLogService::class.java)
+            errorLog.addError("StartJob", "CLI script path not configured")
             Messages.showErrorDialog(
                 project,
-                "CLI script path not configured. Please set it in Settings > Tools > MariaDB Profiler.",
+                "CLI script path not configured. Please set it in the Settings tab of MariaDB Profiler.",
                 "MariaDB Profiler"
             )
             return
@@ -46,8 +49,11 @@ class StartJobAction : AnAction() {
                     val output = process.inputStream.bufferedReader().readText()
                     val completed = process.waitFor(60, TimeUnit.SECONDS)
 
+                    val errorLog = project.getService(ErrorLogService::class.java)
+
                     if (!completed) {
                         process.destroyForcibly()
+                        errorLog.addError("StartJob", "Process timed out after 60 seconds")
                         ApplicationManager.getApplication().invokeLater {
                             Messages.showErrorDialog(
                                 project,
@@ -61,12 +67,14 @@ class StartJobAction : AnAction() {
                     val exitCode = process.exitValue()
                     ApplicationManager.getApplication().invokeLater {
                         if (exitCode == 0) {
+                            errorLog.addInfo("StartJob", "Profiling job started")
                             Messages.showInfoMessage(
                                 project,
                                 "Profiling job started.\n$output",
                                 "MariaDB Profiler"
                             )
                         } else {
+                            errorLog.addError("StartJob", "Failed to start job (exit code $exitCode): $output")
                             Messages.showErrorDialog(
                                 project,
                                 "Failed to start job (exit code $exitCode):\n$output",
@@ -76,6 +84,8 @@ class StartJobAction : AnAction() {
                     }
                 } catch (ex: Exception) {
                     log.error("Failed to start profiling job", ex)
+                    val errorLog = project.getService(ErrorLogService::class.java)
+                    errorLog.addError("StartJob", "Exception: ${ex.message}")
                     ApplicationManager.getApplication().invokeLater {
                         Messages.showErrorDialog(
                             project,

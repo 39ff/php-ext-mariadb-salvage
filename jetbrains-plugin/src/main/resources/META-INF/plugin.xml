@@ -42,6 +42,8 @@
                 serviceImplementation="com.mariadbprofiler.plugin.service.FileWatcherService"/>
         <projectService
                 serviceImplementation="com.mariadbprofiler.plugin.service.StatisticsService"/>
+        <projectService
+                serviceImplementation="com.mariadbprofiler.plugin.service.ErrorLogService"/>
     </extensions>
 
     <actions>

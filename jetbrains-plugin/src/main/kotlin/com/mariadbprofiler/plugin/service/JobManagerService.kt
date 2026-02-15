@@ -47,6 +47,8 @@ class JobManagerService(private val project: Project) {
             jobs.sortedByDescending { it.startedAt }
         } catch (e: Exception) {
             log.error("Failed to parse jobs.json: ${e.message}")
+            val errorLog = project.getService(ErrorLogService::class.java)
+            errorLog.addError("JobManager", "Failed to parse jobs.json: ${e.message}")
             emptyList()
         }
     }

@@ -5,6 +5,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.mariadbprofiler.plugin.model.JobInfo
 import com.mariadbprofiler.plugin.model.QueryEntry
+import com.mariadbprofiler.plugin.service.ErrorLogService
 import com.mariadbprofiler.plugin.service.JobManagerService
 import com.mariadbprofiler.plugin.service.LogParserService
 import com.mariadbprofiler.plugin.service.StatisticsService
@@ -23,14 +24,23 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
     private val queryDetailPanel = QueryDetailPanel(project)
     private val statisticsPanel = StatisticsPanel()
     private val liveTailPanel = LiveTailPanel(project)
+    private val settingsPanel = SettingsPanel(project)
+    private val errorLogPanel = ErrorLogPanel(project)
 
+    private var tabbedPane: JTabbedPane? = null
     private var refreshTimer: Timer? = null
     private var currentJob: JobInfo? = null
     private var currentEntries: List<QueryEntry> = emptyList()
+    private val errorTabIndex: Int get() = 4 // Settings=3, Errors=4
+
+    private val errorChangeListener: () -> Unit = { updateErrorTabTitle() }
 
     init {
         setupUI()
         startRefreshTimer()
+
+        val errorLog = project.getService(ErrorLogService::class.java)
+        errorLog.addChangeListener(errorChangeListener)
     }
 
     private fun setupUI() {
@@ -48,8 +58,8 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
         }
 
         // Right panel: Tabs
-        val tabbedPane = JTabbedPane().apply {
-            // Query Log tab (split: table on top, detail on bottom)
+        tabbedPane = JTabbedPane().apply {
+            // Query Log tab
             val queryLogSplit = JSplitPane(JSplitPane.VERTICAL_SPLIT).apply {
                 topComponent = queryLogPanel
                 bottomComponent = queryDetailPanel
@@ -63,6 +73,12 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
 
             // Live Tail tab
             addTab("Live Tail", liveTailPanel)
+
+            // Settings tab
+            addTab("Settings", settingsPanel)
+
+            // Errors tab
+            addTab("Errors", errorLogPanel)
         }
 
         // Main split: left (jobs) | right (tabs)
@@ -86,22 +102,27 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
             return
         }
 
-        // Load queries for selected job
-        val logParser = project.getService(LogParserService::class.java)
-        val jobManager = project.getService(JobManagerService::class.java)
-        val jsonlPath = jobManager.getJsonlPath(job.key)
+        try {
+            // Load queries for selected job
+            val logParser = project.getService(LogParserService::class.java)
+            val jobManager = project.getService(JobManagerService::class.java)
+            val jsonlPath = jobManager.getJsonlPath(job.key)
 
-        currentEntries = logParser.parseJsonlFile(jsonlPath)
-        queryLogPanel.setEntries(currentEntries)
-        queryDetailPanel.showEntry(null)
+            currentEntries = logParser.parseJsonlFile(jsonlPath)
+            queryLogPanel.setEntries(currentEntries)
+            queryDetailPanel.showEntry(null)
 
-        // Update statistics
-        val statsService = project.getService(StatisticsService::class.java)
-        val stats = statsService.computeStats(currentEntries)
-        statisticsPanel.updateStats(stats)
+            // Update statistics
+            val statsService = project.getService(StatisticsService::class.java)
+            val stats = statsService.computeStats(currentEntries)
+            statisticsPanel.updateStats(stats)
 
-        // Set live tail job
-        liveTailPanel.setJobKey(job.key)
+            // Set live tail job
+            liveTailPanel.setJobKey(job.key)
+        } catch (e: Exception) {
+            val errorLog = project.getService(ErrorLogService::class.java)
+            errorLog.addError("ProfilerWindow", "Failed to load job ${job.key}: ${e.message}")
+        }
     }
 
     private fun onQuerySelected(entry: QueryEntry?) {
@@ -110,9 +131,23 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
 
     fun refreshJobs() {
         val jobManager = project.getService(JobManagerService::class.java)
-        val jobs = jobManager.loadJobs()
+        try {
+            val jobs = jobManager.loadJobs()
+            SwingUtilities.invokeLater {
+                jobListPanel.setJobs(jobs)
+            }
+        } catch (e: Exception) {
+            val errorLog = project.getService(ErrorLogService::class.java)
+            errorLog.addError("JobManager", "Failed to load jobs: ${e.message}")
+        }
+    }
+
+    private fun updateErrorTabTitle() {
         SwingUtilities.invokeLater {
-            jobListPanel.setJobs(jobs)
+            val errorLog = project.getService(ErrorLogService::class.java)
+            val count = errorLog.getErrorCount()
+            val title = if (count > 0) "Errors ($count)" else "Errors"
+            tabbedPane?.setTitleAt(errorTabIndex, title)
         }
     }
 
@@ -130,5 +165,8 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
     override fun dispose() {
         refreshTimer?.cancel()
         refreshTimer = null
+        errorLogPanel.removeListeners()
+        val errorLog = project.getService(ErrorLogService::class.java)
+        errorLog.removeChangeListener(errorChangeListener)
     }
 }

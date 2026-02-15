@@ -25,10 +25,13 @@ class LogParserService(private val project: Project) {
         val file = File(filePath)
         if (!file.exists() || !file.canRead()) {
             log.warn("Cannot read JSONL file: $filePath")
+            val errorLog = project.getService(ErrorLogService::class.java)
+            errorLog.addError("LogParser", "Cannot read JSONL file: $filePath")
             return emptyList()
         }
 
         val entries = mutableListOf<QueryEntry>()
+        var parseErrors = 0
         file.useLines { lines ->
             lines.forEachIndexed { index, line ->
                 val trimmed = line.trim()
@@ -37,9 +40,14 @@ class LogParserService(private val project: Project) {
                         entries.add(json.decodeFromString<QueryEntry>(trimmed))
                     } catch (e: Exception) {
                         log.debug("Failed to parse line $index in $filePath: ${e.message}")
+                        parseErrors++
                     }
                 }
             }
+        }
+        if (parseErrors > 0) {
+            val errorLog = project.getService(ErrorLogService::class.java)
+            errorLog.addWarning("LogParser", "$parseErrors line(s) failed to parse in ${file.name}")
         }
         return entries
     }
