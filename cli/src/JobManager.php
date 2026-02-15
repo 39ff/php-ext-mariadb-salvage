@@ -194,6 +194,8 @@ class JobManager
 
     /**
      * Count queries in a job's JSONL file.
+     *
+     * @return int Number of non-empty lines (queries) in the JSONL file; 0 if the file does not exist
      */
     private function countQueries($key)
     {

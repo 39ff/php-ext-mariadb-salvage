@@ -1,0 +1,56 @@
+services:
+  mariadb:
+    image: mariadb:11
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: demo
+      MYSQL_USER: demo
+      MYSQL_PASSWORD: demo
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ..
+      dockerfile: demo/docker/app/Dockerfile
+    volumes:
+      - profiler_logs:/var/profiler
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      APP_DEBUG: "true"
+      DB_CONNECTION: mysql
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_DATABASE: demo
+      DB_USERNAME: demo
+      DB_PASSWORD: demo
+      SESSION_DRIVER: file
+      CACHE_STORE: file
+
+  websocket:
+    build:
+      context: ./docker/websocket
+    volumes:
+      - profiler_logs:/var/profiler:ro
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+      - websocket
+
+volumes:
+  mariadb_data:
+  profiler_logs:

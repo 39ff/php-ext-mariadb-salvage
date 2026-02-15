@@ -1,0 +1,151 @@
+name: Demo E2E Tests
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'demo/**'
+      - 'ext/**'
+      - 'cli/**'
+      - '.github/workflows/demo-e2e.yml'
+  pull_request:
+    branches: ['**']
+    paths:
+      - 'demo/**'
+      - 'ext/**'
+      - 'cli/**'
+      - '.github/workflows/demo-e2e.yml'
+  workflow_dispatch:
+
+jobs:
+  demo-e2e:
+    name: Demo E2E (Docker + Selenium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start Docker Compose
+        working-directory: demo
+        run: |
+          docker compose up --build -d
+          echo "Waiting for services to be healthy..."
+
+      - name: Wait for app to be ready
+        run: |
+          echo "Waiting for HTTP endpoint..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080 > /dev/null 2>&1; then
+              echo "App is ready! (attempt $i)"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "ERROR: App did not become ready in time"
+              docker compose -f demo/docker-compose.yml logs
+              exit 1
+            fi
+            sleep 3
+          done
+
+      - name: Verify extension is loaded in container
+        working-directory: demo
+        run: |
+          echo "=== Loaded PHP modules ==="
+          docker compose exec -T app php -m | grep mariadb_profiler
+
+          echo ""
+          echo "=== Extension info ==="
+          docker compose exec -T app php --ri mariadb_profiler
+
+          echo ""
+          echo "=== Extension INI settings ==="
+          docker compose exec -T app php -r "
+            echo 'mariadb_profiler.enabled = ' . ini_get('mariadb_profiler.enabled') . PHP_EOL;
+            echo 'mariadb_profiler.log_dir = ' . ini_get('mariadb_profiler.log_dir') . PHP_EOL;
+            echo 'mariadb_profiler.raw_log = ' . ini_get('mariadb_profiler.raw_log') . PHP_EOL;
+          "
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Install test dependencies
+        run: pip install -r demo/tests/requirements.txt
+
+      - name: Run Selenium E2E tests
+        env:
+          DEMO_URL: http://localhost:8080
+          SCREENSHOT_DIR: ${{ github.workspace }}/test-results/screenshots
+          LOG_OUTPUT_DIR: ${{ github.workspace }}/test-results/logs
+        working-directory: demo
+        run: |
+          python -m pytest tests/test_demo_e2e.py -v --tb=short --junitxml=${{ github.workspace }}/test-results/junit.xml 2>&1
+
+      - name: Collect Docker logs
+        if: always()
+        working-directory: demo
+        run: |
+          mkdir -p ${{ github.workspace }}/test-results/docker-logs
+          docker compose logs app       > ${{ github.workspace }}/test-results/docker-logs/app.log 2>&1
+          docker compose logs mariadb    > ${{ github.workspace }}/test-results/docker-logs/mariadb.log 2>&1
+          docker compose logs websocket  > ${{ github.workspace }}/test-results/docker-logs/websocket.log 2>&1
+          docker compose logs nginx      > ${{ github.workspace }}/test-results/docker-logs/nginx.log 2>&1
+
+      - name: Collect profiler logs from container
+        if: always()
+        working-directory: demo
+        run: |
+          mkdir -p ${{ github.workspace }}/test-results/profiler-logs
+          container_id=$(docker compose ps -q app)
+          if [ -n "$container_id" ]; then
+            docker cp "$container_id:/var/profiler/." ${{ github.workspace }}/test-results/profiler-logs/ 2>/dev/null || true
+            echo "Profiler log files:"
+            ls -la ${{ github.workspace }}/test-results/profiler-logs/
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-e2e-results
+          path: test-results/
+          retention-days: 30
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-screenshots
+          path: test-results/screenshots/
+          retention-days: 30
+
+      - name: Tear down
+        if: always()
+        working-directory: demo
+        run: docker compose down -v
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## Demo E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -d "test-results/screenshots" ]; then
+            count=$(ls -1 test-results/screenshots/*.png 2>/dev/null | wc -l)
+            echo "Screenshots captured: **${count}**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -d "test-results/profiler-logs" ]; then
+            count=$(ls -1 test-results/profiler-logs/ 2>/dev/null | wc -l)
+            echo "Profiler log files: **${count}**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the **demo-e2e-results** artifact for screenshots, profiler logs, and Docker logs." >> $GITHUB_STEP_SUMMARY
