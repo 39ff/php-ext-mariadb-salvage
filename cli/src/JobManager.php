@@ -298,6 +298,65 @@ class JobManager
     }
 
     /**
+     * Get tag summary for a job (query count per tag).
+     *
+     * @return array Associative array: tag => count
+     */
+    public function getTagSummary($key)
+    {
+        $queries = $this->getJobQueries($key);
+        $summary = [];
+
+        foreach ($queries as $entry) {
+            $tag = isset($entry['tag']) ? $entry['tag'] : '(untagged)';
+            if (!isset($summary[$tag])) {
+                $summary[$tag] = 0;
+            }
+            $summary[$tag]++;
+        }
+
+        return $summary;
+    }
+
+    /**
+     * Get caller summary for a job (query count per call site).
+     * Uses the first frame of each query's trace.
+     *
+     * @return array Associative array: "call() file:line" => count
+     */
+    public function getCallerSummary($key)
+    {
+        $queries = $this->getJobQueries($key);
+        $summary = [];
+
+        foreach ($queries as $entry) {
+            if (!isset($entry['trace']) || !is_array($entry['trace']) || empty($entry['trace'])) {
+                continue;
+            }
+
+            // Use the first (immediate caller) frame
+            $frame = $entry['trace'][0];
+            $call = isset($frame['call']) ? $frame['call'] : '(unknown)';
+            $file = isset($frame['file']) ? $frame['file'] : '';
+            $line = isset($frame['line']) ? $frame['line'] : 0;
+
+            // Build a compact caller key
+            $callerKey = $call . '()';
+            if ($file !== '') {
+                // Use basename for readability
+                $callerKey .= ' ' . basename($file) . ':' . $line;
+            }
+
+            if (!isset($summary[$callerKey])) {
+                $summary[$callerKey] = 0;
+            }
+            $summary[$callerKey]++;
+        }
+
+        return $summary;
+    }
+
+    /**
      * Remove log files for a job.
      */
     private function removeJobFiles($key)

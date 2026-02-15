@@ -8,10 +8,12 @@
  *   php mariadb_profiler.php job start <key>
  *   php mariadb_profiler.php job end <key>
  *   php mariadb_profiler.php job list
- *   php mariadb_profiler.php job show <key>          # Show parsed queries (with table/column extraction)
- *   php mariadb_profiler.php job raw <key>            # Show raw log
- *   php mariadb_profiler.php job export <key>         # Export parsed JSON to file
- *   php mariadb_profiler.php job purge                # Remove all completed job data
+ *   php mariadb_profiler.php job show <key> [--tag=<tag>]  # Show parsed queries (with table/column extraction)
+ *   php mariadb_profiler.php job raw <key>                  # Show raw log
+ *   php mariadb_profiler.php job export <key>               # Export parsed JSON to file
+ *   php mariadb_profiler.php job tags <key>                 # Show tag summary
+ *   php mariadb_profiler.php job callers <key>              # Show caller summary
+ *   php mariadb_profiler.php job purge                      # Remove all completed job data
  */
 
 // Find autoloader
@@ -46,8 +48,9 @@ if (empty($args)) {
     exit(0);
 }
 
-// Check for --log-dir option
+// Check for --log-dir and --tag options
 $logDir = null;
+$tagFilter = null;
 $filteredArgs = [];
 for ($i = 0; $i < count($args); $i++) {
     if ($args[$i] === '--log-dir' && isset($args[$i + 1])) {
@@ -55,6 +58,11 @@ for ($i = 0; $i < count($args); $i++) {
         $i++;
     } elseif (strpos($args[$i], '--log-dir=') === 0) {
         $logDir = substr($args[$i], strlen('--log-dir='));
+    } elseif ($args[$i] === '--tag' && isset($args[$i + 1])) {
+        $tagFilter = $args[$i + 1];
+        $i++;
+    } elseif (strpos($args[$i], '--tag=') === 0) {
+        $tagFilter = substr($args[$i], strlen('--tag='));
     } else {
         $filteredArgs[] = $args[$i];
     }
@@ -84,13 +92,19 @@ switch ($subCommand) {
         cmdJobList($manager);
         break;
     case 'show':
-        cmdJobShow($manager, $key);
+        cmdJobShow($manager, $key, $tagFilter);
         break;
     case 'raw':
         cmdJobRaw($manager, $key);
         break;
     case 'export':
         cmdJobExport($manager, $key);
+        break;
+    case 'tags':
+        cmdJobTags($manager, $key);
+        break;
+    case 'callers':
+        cmdJobCallers($manager, $key);
         break;
     case 'purge':
         cmdJobPurge($manager);
@@ -168,7 +182,7 @@ function cmdJobList(JobManager $manager)
     }
 }
 
-function cmdJobShow(JobManager $manager, $key)
+function cmdJobShow(JobManager $manager, $key, $tagFilter = null)
 {
     if ($key === '') {
         fwrite(STDERR, "[ERROR] Job key is required.\n");
@@ -190,6 +204,12 @@ function cmdJobShow(JobManager $manager, $key)
             continue;
         }
 
+        // Apply tag filter
+        $entryTag = isset($entry['tag']) ? $entry['tag'] : null;
+        if ($tagFilter !== null && $entryTag !== $tagFilter) {
+            continue;
+        }
+
         $result = $analyzer->analyze($sql);
 
         $output = [
@@ -198,6 +218,16 @@ function cmdJobShow(JobManager $manager, $key)
             't' => $result['tables'],
             'c' => $result['columns'],
         ];
+
+        // Include tag if present
+        if ($entryTag !== null) {
+            $output['tag'] = $entryTag;
+        }
+
+        // Include trace if present
+        if (isset($entry['trace']) && !empty($entry['trace'])) {
+            $output['trace'] = $entry['trace'];
+        }
 
         fwrite(STDOUT, json_encode($output, JSON_UNESCAPED_UNICODE) . "\n");
     }
@@ -245,13 +275,25 @@ function cmdJobExport(JobManager $manager, $key)
 
         $result = $analyzer->analyze($sql);
 
-        $parsed[] = [
+        $item = [
             'k' => $key,
             'q' => $sql,
             't' => $result['tables'],
             'c' => $result['columns'],
             'ts' => isset($entry['ts']) ? $entry['ts'] : null,
         ];
+
+        // Include tag if present
+        if (isset($entry['tag'])) {
+            $item['tag'] = $entry['tag'];
+        }
+
+        // Include trace if present
+        if (isset($entry['trace']) && !empty($entry['trace'])) {
+            $item['trace'] = $entry['trace'];
+        }
+
+        $parsed[] = $item;
     }
 
     // Write parsed JSON file
@@ -272,6 +314,56 @@ function cmdJobExport(JobManager $manager, $key)
     $jsonlFile = $manager->getLogDir() . '/' . $key . '.jsonl';
     if (file_exists($jsonlFile)) {
         fwrite(STDOUT, "[OK] Query log:    {$jsonlFile}\n");
+    }
+}
+
+function cmdJobTags(JobManager $manager, $key)
+{
+    if ($key === '') {
+        fwrite(STDERR, "[ERROR] Job key is required.\n");
+        exit(1);
+    }
+
+    $summary = $manager->getTagSummary($key);
+
+    if (empty($summary)) {
+        fwrite(STDOUT, "No queries found for job '{$key}'.\n");
+        return;
+    }
+
+    // Sort by count descending
+    arsort($summary);
+
+    fwrite(STDOUT, sprintf("%-40s %s\n", "TAG", "QUERIES"));
+    fwrite(STDOUT, str_repeat('-', 50) . "\n");
+
+    foreach ($summary as $tag => $count) {
+        fwrite(STDOUT, sprintf("%-40s %d\n", $tag, $count));
+    }
+}
+
+function cmdJobCallers(JobManager $manager, $key)
+{
+    if ($key === '') {
+        fwrite(STDERR, "[ERROR] Job key is required.\n");
+        exit(1);
+    }
+
+    $summary = $manager->getCallerSummary($key);
+
+    if (empty($summary)) {
+        fwrite(STDOUT, "No trace data found for job '{$key}'.\n");
+        return;
+    }
+
+    // Sort by count descending
+    arsort($summary);
+
+    fwrite(STDOUT, sprintf("%-60s %s\n", "CALLER", "QUERIES"));
+    fwrite(STDOUT, str_repeat('-', 70) . "\n");
+
+    foreach ($summary as $caller => $count) {
+        fwrite(STDOUT, sprintf("%-60s %d\n", $caller, $count));
     }
 }
 
@@ -308,7 +400,7 @@ function showUsage()
 MariaDB Query Profiler - CLI Tool
 
 Usage:
-  php mariadb_profiler.php [--log-dir=<path>] job <command> [<key>]
+  php mariadb_profiler.php [--log-dir=<path>] job <command> [<key>] [options]
 
 Commands:
   job start [<key>]    Start a profiling job (auto-generates key if omitted)
@@ -317,17 +409,21 @@ Commands:
   job show <key>       Show parsed queries with table/column extraction
   job raw <key>        Show raw query log
   job export <key>     Export parsed JSON + raw log to files
+  job tags <key>       Show tag summary (query count per context tag)
+  job callers <key>    Show caller summary (query count per call site)
   job purge            Remove all completed job data
 
 Options:
   --log-dir=<path>     Override log directory (default: from php.ini or /tmp/mariadb_profiler)
+  --tag=<tag>          Filter queries by context tag (for 'show' command)
 
 Examples:
   php mariadb_profiler.php job start my-trace-001
-  php mariadb_profiler.php job start my-trace-002
-  php mariadb_profiler.php job end my-trace-002
-  php mariadb_profiler.php job show my-trace-002
   php mariadb_profiler.php job end my-trace-001
+  php mariadb_profiler.php job show my-trace-001
+  php mariadb_profiler.php job show my-trace-001 --tag=user_registration
+  php mariadb_profiler.php job tags my-trace-001
+  php mariadb_profiler.php job callers my-trace-001
   php mariadb_profiler.php job export my-trace-001
 
 USAGE;
