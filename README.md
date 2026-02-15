@@ -3,15 +3,15 @@
 ```mermaid
 flowchart LR
     subgraph APP[PHP Application Runtime]
-        PHP[PHP App using mysqli/PDO]
-        EXT[mariadb_profiler extension\n(mysqlnd hook)]
+        PHP["PHP App using mysqli/PDO"]
+        EXT["mariadb_profiler extension<br/>mysqlnd hook"]
         PHP --> EXT
     end
 
     subgraph LOGS[Shared Log Directory]
-        JOBS[jobs.json\nactive/completed jobs]
-        JSONL[<jobKey>.jsonl\nstructured query logs]
-        RAW[<jobKey>.raw.log\nhuman-readable logs]
+        JOBS["jobs.json<br/>active/completed jobs"]
+        JSONL["jobKey.jsonl<br/>structured query logs"]
+        RAW["jobKey.raw.log<br/>human-readable logs"]
     end
 
     EXT --> JOBS
@@ -19,9 +19,9 @@ flowchart LR
     EXT --> RAW
 
     subgraph TOOLING[Developer Tooling]
-        CLI[CLI: cli/mariadb_profiler.php\nstart/end/list/show/export]
-        JB[JetBrains Plugin\nviewer, stats, live tail]
-        DEMO[Docker Demo (Laravel + Nginx + WS)]
+        CLI["CLI: cli/mariadb_profiler.php<br/>start/end/list/show/export"]
+        JB["JetBrains Plugin<br/>viewer, stats, live tail"]
+        DEMO["Docker Demo: Laravel + Nginx + WebSocket"]
     end
 
     CLI <--> JOBS
