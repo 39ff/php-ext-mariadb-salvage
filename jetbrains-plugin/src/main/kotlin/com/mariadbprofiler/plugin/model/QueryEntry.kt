@@ -12,8 +12,24 @@ data class QueryEntry(
     @SerialName("k")
     val jobKey: String = "",
     val tag: String? = null,
+    val params: List<String?> = emptyList(),
     val trace: List<BacktraceFrame> = emptyList()
 ) {
+    /** Whether this query has bound parameters (prepared statement) */
+    val hasParams: Boolean
+        get() = params.isNotEmpty()
+
+    /** Query with ? placeholders replaced by bound values */
+    val boundQuery: String?
+        get() {
+            if (params.isEmpty()) return null
+            var result = query
+            for (param in params) {
+                val replacement = if (param == null) "NULL" else "'$param'"
+                result = result.replaceFirst("?", replacement)
+            }
+            return result
+        }
     /** Tag as list for UI display compatibility */
     val tags: List<String>
         get() = if (tag != null) listOf(tag) else emptyList()

@@ -13,6 +13,7 @@
 
 #include "php.h"
 #include "php_mariadb_profiler.h"
+#include "profiler_log.h"
 
 /*
  * mysqlnd internal API changed across PHP versions:
@@ -124,20 +125,201 @@ MYSQLND_METHOD(profiler_conn, send_query)(
 /* }}} */
 
 /* {{{ profiler_stmt_prepare_hook
- * Intercepts prepared statements at prepare time to log the query template */
+ * Intercepts prepared statements at prepare time.
+ * PHP 7.0+: stores query template for later use at execute() time.
+ * PHP 5.x:  logs template immediately (no param capture support). */
 static enum_func_status
 MYSQLND_METHOD(profiler_stmt, prepare)(
     MYSQLND_STMT * const stmt,
     const char *query,
     PROFILER_QUERY_LEN_T query_len TSRMLS_DC)
 {
-    /* Log prepared statement query template */
-    if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
+    enum_func_status result;
+
+    result = orig_stmt_methods->prepare(stmt, query, query_len TSRMLS_CC);
+
+#if PHP_VERSION_ID >= 70000
+    /* Store query template on success - will be logged at execute() with bound params */
+    if (result == PASS && PROFILER_G(enabled) && PROFILER_G(stmt_queries)) {
+        zval zv;
+        ZVAL_STRINGL(&zv, query, query_len);
+        zend_hash_index_update(
+            PROFILER_G(stmt_queries),
+            (zend_ulong)(uintptr_t)stmt,
+            &zv
+        );
+    }
+#else
+    /* PHP 5.x: log template at prepare time (no param support) */
+    if (result == PASS && PROFILER_G(enabled) && profiler_job_is_any_active()) {
         profiler_log_query(query, query_len);
     }
-    return orig_stmt_methods->prepare(stmt, query, query_len TSRMLS_CC);
+#endif
+
+    return result;
 }
 /* }}} */
+
+#if PHP_VERSION_ID >= 70000
+
+/* {{{ profiler_build_params_json
+ * Build JSON array string from stmt's bound parameter values.
+ * Returns emalloc'd string or NULL if no params. Caller must efree. */
+static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
+{
+    MYSQLND_STMT_DATA *data = stmt->data;
+    unsigned int i;
+    size_t buf_size, pos;
+    char *buf;
+
+    if (!data || !data->param_bind || data->param_count == 0) {
+        return NULL;
+    }
+
+    buf_size = 256;
+    buf = (char *)emalloc(buf_size);
+    pos = 0;
+
+    buf[pos++] = '[';
+
+    for (i = 0; i < data->param_count; i++) {
+        zval *zv = &data->param_bind[i].zv;
+
+        if (i > 0) {
+            buf[pos++] = ',';
+        }
+
+        /* Ensure space for this param (grow if needed) */
+        if (pos + 128 > buf_size) {
+            buf_size *= 2;
+            buf = (char *)erealloc(buf, buf_size);
+        }
+
+        /* Dereference if reference (bind_param uses references) */
+        ZVAL_DEREF(zv);
+
+        switch (Z_TYPE_P(zv)) {
+            case IS_NULL:
+                memcpy(buf + pos, "null", 4);
+                pos += 4;
+                break;
+
+            case IS_LONG:
+                pos += snprintf(buf + pos, buf_size - pos, "\"%ld\"",
+                    (long)Z_LVAL_P(zv));
+                break;
+
+            case IS_DOUBLE:
+                pos += snprintf(buf + pos, buf_size - pos, "\"%g\"",
+                    Z_DVAL_P(zv));
+                break;
+
+#if PHP_VERSION_ID >= 70000
+            case IS_TRUE:
+                memcpy(buf + pos, "\"1\"", 3);
+                pos += 3;
+                break;
+
+            case IS_FALSE:
+                memcpy(buf + pos, "\"\"", 2);
+                pos += 2;
+                break;
+#endif
+
+            case IS_STRING: {
+                char *escaped = profiler_log_escape_json_string(
+                    Z_STRVAL_P(zv), Z_STRLEN_P(zv));
+                size_t esc_len = strlen(escaped);
+
+                /* Grow buffer for escaped string */
+                if (pos + esc_len + 4 > buf_size) {
+                    buf_size = pos + esc_len + 256;
+                    buf = (char *)erealloc(buf, buf_size);
+                }
+
+                buf[pos++] = '"';
+                memcpy(buf + pos, escaped, esc_len);
+                pos += esc_len;
+                buf[pos++] = '"';
+                efree(escaped);
+                break;
+            }
+
+            default: {
+                /* Convert unknown types to string */
+                zend_string *str = zval_get_string(zv);
+                char *escaped = profiler_log_escape_json_string(
+                    ZSTR_VAL(str), ZSTR_LEN(str));
+                size_t esc_len = strlen(escaped);
+
+                if (pos + esc_len + 4 > buf_size) {
+                    buf_size = pos + esc_len + 256;
+                    buf = (char *)erealloc(buf, buf_size);
+                }
+
+                buf[pos++] = '"';
+                memcpy(buf + pos, escaped, esc_len);
+                pos += esc_len;
+                buf[pos++] = '"';
+                efree(escaped);
+                zend_string_release(str);
+                break;
+            }
+        }
+    }
+
+    buf[pos++] = ']';
+    buf[pos] = '\0';
+
+    return buf;
+}
+/* }}} */
+
+/* {{{ profiler_stmt_execute_hook
+ * Intercepts prepared statement execution to log query with bound params. */
+static enum_func_status
+MYSQLND_METHOD(profiler_stmt, execute)(
+    MYSQLND_STMT * const stmt)
+{
+    if (PROFILER_G(enabled) && profiler_job_is_any_active() && PROFILER_G(stmt_queries)) {
+        zval *entry = zend_hash_index_find(
+            PROFILER_G(stmt_queries),
+            (zend_ulong)(uintptr_t)stmt
+        );
+        if (entry && Z_TYPE_P(entry) == IS_STRING) {
+            char *params_json = profiler_build_params_json(stmt);
+            profiler_log_query_with_params(
+                Z_STRVAL_P(entry), Z_STRLEN_P(entry), params_json
+            );
+            if (params_json) {
+                efree(params_json);
+            }
+        }
+    }
+
+    return orig_stmt_methods->execute(stmt);
+}
+/* }}} */
+
+/* {{{ profiler_stmt_dtor_hook
+ * Clean up stored query template when statement is destroyed. */
+static enum_func_status
+MYSQLND_METHOD(profiler_stmt, dtor)(
+    MYSQLND_STMT * const stmt,
+    PROFILER_BOOL_T implicit)
+{
+    if (PROFILER_G(stmt_queries)) {
+        zend_hash_index_del(
+            PROFILER_G(stmt_queries),
+            (zend_ulong)(uintptr_t)stmt
+        );
+    }
+
+    return orig_stmt_methods->dtor(stmt, implicit);
+}
+/* }}} */
+
+#endif /* PHP_VERSION_ID >= 70000 */
 
 /* {{{ mariadb_profiler_mysqlnd_plugin_register */
 void mariadb_profiler_mysqlnd_plugin_register(void)
@@ -180,5 +362,10 @@ void mariadb_profiler_mysqlnd_plugin_register(void)
     }
 
     stmt_methods->prepare = MYSQLND_METHOD(profiler_stmt, prepare);
+
+#if PHP_VERSION_ID >= 70000
+    stmt_methods->execute = MYSQLND_METHOD(profiler_stmt, execute);
+    stmt_methods->dtor    = MYSQLND_METHOD(profiler_stmt, dtor);
+#endif
 }
 /* }}} */
