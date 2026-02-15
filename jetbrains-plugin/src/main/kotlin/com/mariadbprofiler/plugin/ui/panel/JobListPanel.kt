@@ -12,23 +12,42 @@ import java.awt.FlowLayout
 import javax.swing.*
 
 class JobListPanel(
-    private val onJobSelected: (JobInfo?) -> Unit
+    private val onJobSelected: (JobInfo?) -> Unit,
+    private val onStartJob: (() -> Unit)? = null,
+    private val onStopJob: ((JobInfo) -> Unit)? = null
 ) : JPanel(BorderLayout()) {
 
     private val listModel = DefaultListModel<JobInfo>()
     private val jobList = JBList(listModel)
     private var suppressSelectionEvents = false
+    private val startButton = JButton("Start").apply { toolTipText = "Start a new profiling session" }
+    private val stopButton = JButton("Stop").apply { toolTipText = "Stop the selected profiling session"; isEnabled = false }
 
     init {
         setupUI()
     }
 
     private fun setupUI() {
-        // Header
-        val header = JPanel(FlowLayout(FlowLayout.LEFT, 4, 2)).apply {
-            add(JBLabel("Jobs"))
+        // Header with Start/Stop buttons
+        val header = JPanel(BorderLayout()).apply {
+            val label = JBLabel("Jobs")
+            label.border = BorderFactory.createEmptyBorder(0, 4, 0, 0)
+            add(label, BorderLayout.WEST)
+
+            val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0))
+            buttonPanel.add(startButton)
+            buttonPanel.add(stopButton)
+            add(buttonPanel, BorderLayout.EAST)
         }
         add(header, BorderLayout.NORTH)
+
+        startButton.addActionListener { onStartJob?.invoke() }
+        stopButton.addActionListener {
+            val selected = jobList.selectedValue
+            if (selected != null && selected.isActive) {
+                onStopJob?.invoke(selected)
+            }
+        }
 
         // Job list
         jobList.apply {
@@ -36,7 +55,9 @@ class JobListPanel(
             selectionMode = ListSelectionModel.SINGLE_SELECTION
             addListSelectionListener { e ->
                 if (!e.valueIsAdjusting && !suppressSelectionEvents) {
-                    onJobSelected(selectedValue)
+                    val selected = selectedValue
+                    onJobSelected(selected)
+                    stopButton.isEnabled = selected?.isActive == true
                 }
             }
         }
@@ -65,6 +86,22 @@ class JobListPanel(
     }
 
     fun getSelectedJob(): JobInfo? = jobList.selectedValue
+
+    fun selectJobByKey(key: String) {
+        for (i in 0 until listModel.size) {
+            if (listModel.getElementAt(i).key == key) {
+                jobList.selectedIndex = i
+                jobList.ensureIndexIsVisible(i)
+                onJobSelected(listModel.getElementAt(i))
+                stopButton.isEnabled = listModel.getElementAt(i).isActive
+                break
+            }
+        }
+    }
+
+    fun setStartEnabled(enabled: Boolean) {
+        startButton.isEnabled = enabled
+    }
 
     private class JobCellRenderer : DefaultListCellRenderer() {
         override fun getListCellRendererComponent(
