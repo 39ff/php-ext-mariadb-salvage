@@ -1,14 +1,27 @@
 package com.mariadbprofiler.plugin.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
 data class QueryEntry(
+    @SerialName("q")
     val query: String = "",
+    @SerialName("ts")
     val timestamp: Double = 0.0,
-    val tags: List<String> = emptyList(),
-    val backtrace: List<BacktraceFrame> = emptyList()
+    @SerialName("k")
+    val jobKey: String = "",
+    val tag: String? = null,
+    val trace: List<BacktraceFrame> = emptyList()
 ) {
+    /** Tag as list for UI display compatibility */
+    val tags: List<String>
+        get() = if (tag != null) listOf(tag) else emptyList()
+
+    /** Backtrace alias */
+    val backtrace: List<BacktraceFrame>
+        get() = trace
+
     val queryType: QueryType
         get() {
             val trimmed = query.trimStart().uppercase()
@@ -43,8 +56,6 @@ data class QueryEntry(
     val tables: List<String>
         get() {
             val tableNames = mutableListOf<String>()
-            val upper = query.uppercase()
-            // Simple extraction: FROM, JOIN, INTO, UPDATE table names
             val patterns = listOf(
                 Regex("\\bFROM\\s+`?(\\w+)`?", RegexOption.IGNORE_CASE),
                 Regex("\\bJOIN\\s+`?(\\w+)`?", RegexOption.IGNORE_CASE),
