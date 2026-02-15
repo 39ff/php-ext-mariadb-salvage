@@ -19,16 +19,68 @@ data class QueryEntry(
     val hasParams: Boolean
         get() = params.isNotEmpty()
 
-    /** Query with ? placeholders replaced by bound values */
+    /**
+     * Query with `?` placeholders replaced by bound values.
+     *
+     * Only replaces `?` characters that appear **outside** single-quoted SQL
+     * string literals.  Doubled single-quotes (`''`) inside a literal are
+     * treated as an escaped quote and do not toggle the "inside string" state.
+     *
+     * Param values are wrapped in single quotes with internal single-quotes
+     * doubled (`O'Brien` → `'O''Brien'`); NULL params are emitted bare.
+     */
     val boundQuery: String?
         get() {
             if (params.isEmpty()) return null
-            var result = query
-            for (param in params) {
-                val replacement = if (param == null) "NULL" else "'$param'"
-                result = result.replaceFirst("?", replacement)
+
+            val sb = StringBuilder(query.length + params.size * 8)
+            var paramIdx = 0
+            var inString = false
+            var i = 0
+
+            while (i < query.length) {
+                val ch = query[i]
+
+                if (inString) {
+                    if (ch == '\'') {
+                        /* '' inside a literal is an escaped quote – stay in string */
+                        if (i + 1 < query.length && query[i + 1] == '\'') {
+                            sb.append("''")
+                            i += 2
+                            continue
+                        }
+                        /* closing quote */
+                        inString = false
+                        sb.append(ch)
+                    } else {
+                        sb.append(ch)
+                    }
+                } else {
+                    when (ch) {
+                        '\'' -> {
+                            inString = true
+                            sb.append(ch)
+                        }
+                        '?' -> {
+                            if (paramIdx < params.size) {
+                                val v = params[paramIdx++]
+                                if (v == null) {
+                                    sb.append("NULL")
+                                } else {
+                                    sb.append('\'')
+                                    sb.append(v.replace("'", "''"))
+                                    sb.append('\'')
+                                }
+                            } else {
+                                sb.append(ch) // more ?'s than params – keep as-is
+                            }
+                        }
+                        else -> sb.append(ch)
+                    }
+                }
+                i++
             }
-            return result
+            return sb.toString()
         }
     /** Tag as list for UI display compatibility */
     val tags: List<String>

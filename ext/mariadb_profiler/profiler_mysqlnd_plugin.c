@@ -162,11 +162,21 @@ MYSQLND_METHOD(profiler_stmt, prepare)(
 
 #if PHP_VERSION_ID >= 70000
 
+/*
+ * MYSQLND_VERSION_ID equals PHP_VERSION_ID.  The internal layout of
+ * st_mysqlnd_stmt_data (fields param_bind, param_count) has been stable
+ * from PHP 7.0 through 8.4.  Guard direct access so that an unknown
+ * future mysqlnd silently degrades to "no params" instead of crashing.
+ */
+#define PROFILER_MYSQLND_PARAM_ACCESS_SAFE \
+    (MYSQLND_VERSION_ID >= 70000 && MYSQLND_VERSION_ID < 80500)
+
 /* {{{ profiler_build_params_json
  * Build JSON array string from stmt's bound parameter values.
  * Returns emalloc'd string or NULL if no params. Caller must efree. */
 static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
 {
+#if PROFILER_MYSQLND_PARAM_ACCESS_SAFE
     MYSQLND_STMT_DATA *data = stmt->data;
     unsigned int i;
     size_t buf_size, pos;
@@ -214,7 +224,6 @@ static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
                     Z_DVAL_P(zv));
                 break;
 
-#if PHP_VERSION_ID >= 70000
             case IS_TRUE:
                 memcpy(buf + pos, "\"1\"", 3);
                 pos += 3;
@@ -224,7 +233,6 @@ static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
                 memcpy(buf + pos, "\"\"", 2);
                 pos += 2;
                 break;
-#endif
 
             case IS_STRING: {
                 char *escaped = profiler_log_escape_json_string(
@@ -272,6 +280,11 @@ static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
     buf[pos] = '\0';
 
     return buf;
+#else
+    /* Unknown mysqlnd version – skip param capture to avoid ABI issues */
+    (void)stmt;
+    return NULL;
+#endif /* PROFILER_MYSQLND_PARAM_ACCESS_SAFE */
 }
 /* }}} */
 
