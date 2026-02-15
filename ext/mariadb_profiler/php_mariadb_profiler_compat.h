@@ -121,4 +121,62 @@ typedef long zend_long;
 # define profiler_conn_data_get_methods() mysqlnd_conn_data_get_methods()
 #endif
 
+/*
+ * ---- zend_fetch_debug_backtrace compatibility ----
+ *
+ * PHP 5.3:     zend_fetch_debug_backtrace(zval*, int, int TSRMLS_DC)
+ *              - no "limit" parameter
+ * PHP 5.4-5.6: zend_fetch_debug_backtrace(zval*, int, int, int TSRMLS_DC)
+ *              - 4th param = limit
+ * PHP 7.0+:    zend_fetch_debug_backtrace(zval*, int, int, int)
+ *              - TSRMLS removed
+ */
+#if PHP_VERSION_ID < 50400
+# define PROFILER_FETCH_TRACE(zv, skip, opts, limit) \
+    zend_fetch_debug_backtrace((zv), (skip), (opts) TSRMLS_CC)
+#elif PHP_VERSION_ID < 70000
+# define PROFILER_FETCH_TRACE(zv, skip, opts, limit) \
+    zend_fetch_debug_backtrace((zv), (skip), (opts), (limit) TSRMLS_CC)
+#else
+# define PROFILER_FETCH_TRACE(zv, skip, opts, limit) \
+    zend_fetch_debug_backtrace((zv), (skip), (opts), (limit))
+#endif
+
+/*
+ * ---- zend_parse_parameters string length type ----
+ *
+ * PHP 5.x: int
+ * PHP 7.0+: size_t
+ */
+#if PHP_VERSION_ID < 70000
+# define PROFILER_PARAM_STR_LEN_T  int
+#else
+# define PROFILER_PARAM_STR_LEN_T  size_t
+#endif
+
+/*
+ * ---- RETURN_STRING / RETVAL_STRING compatibility ----
+ *
+ * PHP 5.x: RETURN_STRING(s, dup) / RETVAL_STRING(s, dup)
+ * PHP 7.0+: RETURN_STRING(s) / RETVAL_STRING(s)  (always copies)
+ */
+#if PHP_VERSION_ID < 70000
+# define PROFILER_RETURN_STRING(s)  RETURN_STRING((s), 1)
+# define PROFILER_RETVAL_STRING(s)  RETVAL_STRING((s), 1)
+#else
+# define PROFILER_RETURN_STRING(s)  RETURN_STRING(s)
+# define PROFILER_RETVAL_STRING(s)  RETVAL_STRING(s)
+#endif
+
+/*
+ * ---- HashTable access compatibility ----
+ *
+ * PHP 5.x: zend_hash_find returns int, stores result in void**
+ * PHP 7.0+: zend_hash_str_find returns zval*
+ */
+#if PHP_VERSION_ID >= 70000
+# define PROFILER_HT_FIND_STR(ht, key, key_len) \
+    zend_hash_str_find((ht), (key), (key_len))
+#endif
+
 #endif /* PHP_MARIADB_PROFILER_COMPAT_H */

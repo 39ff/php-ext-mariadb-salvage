@@ -3,6 +3,7 @@
   | MariaDB Query Profiler - Log Writer                                  |
   +----------------------------------------------------------------------+
   | Writes query logs to per-job files                                   |
+  | Supports context tags and PHP backtrace in log output                |
   +----------------------------------------------------------------------+
 */
 
@@ -14,6 +15,8 @@
 #include "php_mariadb_profiler.h"
 #include "profiler_log.h"
 #include "profiler_job.h"
+#include "profiler_tag.h"
+#include "profiler_trace.h"
 
 #include <sys/file.h>
 #include <sys/time.h>
@@ -21,7 +24,7 @@
 
 /* {{{ profiler_log_escape_json_string
  * Escape a string for JSON output. Caller must efree result. */
-static char *profiler_log_escape_json_string(const char *str, size_t len)
+char *profiler_log_escape_json_string(const char *str, size_t len)
 {
     size_t i;
     size_t out_len = 0;
@@ -104,8 +107,10 @@ static double profiler_log_get_microtime(void)
 /* }}} */
 
 /* {{{ profiler_log_raw
- * Write raw query to job's raw log file */
-void profiler_log_raw(const char *job_key, const char *query, size_t query_len)
+ * Write raw query to job's raw log file.
+ * tag and trace_json may be NULL. */
+void profiler_log_raw(const char *job_key, const char *query, size_t query_len,
+                      const char *tag, const char *trace_json)
 {
     char *filepath;
     FILE *fp;
@@ -125,7 +130,63 @@ void profiler_log_raw(const char *job_key, const char *query, size_t query_len)
     flock(fileno(fp), LOCK_EX);
 
     timestamp = profiler_log_get_timestamp();
-    fprintf(fp, "[%s] %.*s\n", timestamp, (int)query_len, query);
+
+    if (tag) {
+        fprintf(fp, "[%s] [%s] %.*s\n", timestamp, tag, (int)query_len, query);
+    } else {
+        fprintf(fp, "[%s] %.*s\n", timestamp, (int)query_len, query);
+    }
+
+    /* Append trace lines (indented with arrow prefix) */
+    if (trace_json && trace_json[0] == '[' && trace_json[1] != ']') {
+        /*
+         * trace_json is a JSON array like:
+         *   [{"call":"Foo->bar","file":"/app/Foo.php","line":42}, ...]
+         * We do a lightweight parse to extract call/file/line for raw log.
+         */
+        const char *p = trace_json;
+        while ((p = strstr(p, "\"call\":\"")) != NULL) {
+            const char *call_start, *call_end;
+            const char *file_start, *file_end;
+            const char *line_start;
+            long line_val = 0;
+
+            /* Extract call */
+            p += 8; /* skip "call":" */
+            call_start = p;
+            call_end = strchr(p, '"');
+            if (!call_end) break;
+            p = call_end + 1;
+
+            /* Extract file */
+            file_start = file_end = "";
+            {
+                const char *fp2 = strstr(p, "\"file\":\"");
+                if (fp2 && fp2 < p + 200) {
+                    fp2 += 8;
+                    file_start = fp2;
+                    file_end = strchr(fp2, '"');
+                    if (!file_end) break;
+                    p = file_end + 1;
+                }
+            }
+
+            /* Extract line */
+            {
+                const char *lp = strstr(p, "\"line\":");
+                if (lp && lp < p + 100) {
+                    lp += 7;
+                    line_val = strtol(lp, NULL, 10);
+                }
+            }
+
+            fprintf(fp, "  <- %.*s() %.*s:%ld\n",
+                (int)(call_end - call_start), call_start,
+                (int)(file_end - file_start), file_start,
+                line_val);
+        }
+    }
+
     efree(timestamp);
 
     flock(fileno(fp), LOCK_UN);
@@ -135,14 +196,16 @@ void profiler_log_raw(const char *job_key, const char *query, size_t query_len)
 
 /* {{{ profiler_log_jsonl
  * Write JSON line to job's parsed log file.
- * Only writes raw query + timestamp here. SQL parsing (table/column extraction)
- * is done by the CLI tool using PHPSQLParser for accuracy. */
-static void profiler_log_jsonl(const char *job_key, const char *query, size_t query_len)
+ * tag and trace_json may be NULL.
+ * SQL parsing (table/column extraction) is done by the CLI tool. */
+static void profiler_log_jsonl(const char *job_key, const char *query, size_t query_len,
+                               const char *tag, const char *trace_json)
 {
     char *filepath;
     FILE *fp;
     char *escaped_query;
     char *escaped_key;
+    char *escaped_tag = NULL;
     double ts;
     TSRMLS_FETCH();
 
@@ -159,13 +222,30 @@ static void profiler_log_jsonl(const char *job_key, const char *query, size_t qu
 
     escaped_query = profiler_log_escape_json_string(query, query_len);
     escaped_key = profiler_log_escape_json_string(job_key, strlen(job_key));
+    if (tag) {
+        escaped_tag = profiler_log_escape_json_string(tag, strlen(tag));
+    }
     ts = profiler_log_get_microtime();
 
-    fprintf(fp, "{\"k\":\"%s\",\"q\":\"%s\",\"ts\":%.6f}\n",
-        escaped_key, escaped_query, ts);
+    /* Build JSON line with optional tag and trace fields */
+    fprintf(fp, "{\"k\":\"%s\",\"q\":\"%s\"", escaped_key, escaped_query);
+
+    if (escaped_tag) {
+        fprintf(fp, ",\"tag\":\"%s\"", escaped_tag);
+    }
+
+    if (trace_json) {
+        /* trace_json is already a valid JSON array string */
+        fprintf(fp, ",\"trace\":%s", trace_json);
+    }
+
+    fprintf(fp, ",\"ts\":%.6f}\n", ts);
 
     efree(escaped_query);
     efree(escaped_key);
+    if (escaped_tag) {
+        efree(escaped_tag);
+    }
 
     flock(fileno(fp), LOCK_UN);
     fclose(fp);
@@ -173,12 +253,15 @@ static void profiler_log_jsonl(const char *job_key, const char *query, size_t qu
 /* }}} */
 
 /* {{{ profiler_log_query
- * Main entry point: log a query to all active jobs */
+ * Main entry point: log a query to all active jobs.
+ * Captures the current context tag and PHP trace once, shared across all jobs. */
 void profiler_log_query(const char *query, size_t query_len)
 {
     char **jobs;
     int job_count;
     int i;
+    const char *tag;
+    char *trace_json;
     TSRMLS_FETCH();
 
     jobs = profiler_job_get_active_list(&job_count);
@@ -187,14 +270,22 @@ void profiler_log_query(const char *query, size_t query_len)
         return;
     }
 
+    /* Capture tag and trace once (shared across all active jobs) */
+    tag = profiler_tag_current();
+    trace_json = profiler_trace_capture_json(); /* NULL if disabled */
+
     for (i = 0; i < job_count; i++) {
-        /* Write JSONL entry (raw query + metadata) */
-        profiler_log_jsonl(jobs[i], query, query_len);
+        /* Write JSONL entry */
+        profiler_log_jsonl(jobs[i], query, query_len, tag, trace_json);
 
         /* Write raw log if enabled */
         if (PROFILER_G(raw_log)) {
-            profiler_log_raw(jobs[i], query, query_len);
+            profiler_log_raw(jobs[i], query, query_len, tag, trace_json);
         }
+    }
+
+    if (trace_json) {
+        efree(trace_json);
     }
 }
 /* }}} */

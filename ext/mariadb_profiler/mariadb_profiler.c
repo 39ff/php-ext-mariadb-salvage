@@ -54,6 +54,14 @@ PHP_INI_BEGIN()
         job_check_interval,
         zend_mariadb_profiler_globals,
         mariadb_profiler_globals)
+
+    STD_PHP_INI_ENTRY("mariadb_profiler.trace_depth",
+        "0",
+        PHP_INI_SYSTEM,
+        OnUpdateLong,
+        trace_depth,
+        zend_mariadb_profiler_globals,
+        mariadb_profiler_globals)
 PHP_INI_END()
 /* }}} */
 
@@ -177,6 +185,7 @@ PHP_RINIT_FUNCTION(mariadb_profiler)
 PHP_RSHUTDOWN_FUNCTION(mariadb_profiler)
 {
     if (PROFILER_G(enabled)) {
+        profiler_tag_clear_all();
         profiler_job_free_active_jobs();
     }
     return SUCCESS;
@@ -186,19 +195,41 @@ PHP_RSHUTDOWN_FUNCTION(mariadb_profiler)
 /* {{{ PHP_MINFO_FUNCTION */
 PHP_MINFO_FUNCTION(mariadb_profiler)
 {
+    char trace_depth_str[32];
+
+    snprintf(trace_depth_str, sizeof(trace_depth_str), "%ld",
+        (long)PROFILER_G(trace_depth));
+
     php_info_print_table_start();
     php_info_print_table_header(2, "MariaDB Query Profiler", "enabled");
     php_info_print_table_row(2, "Version", PHP_MARIADB_PROFILER_VERSION);
     php_info_print_table_row(2, "Log directory", PROFILER_G(log_dir));
     php_info_print_table_row(2, "Raw logging", PROFILER_G(raw_log) ? "Yes" : "No");
+    php_info_print_table_row(2, "Trace depth", trace_depth_str);
     php_info_print_table_end();
 
     DISPLAY_INI_ENTRIES();
 }
 /* }}} */
 
+/* {{{ arginfo for PHP functions */
+ZEND_BEGIN_ARG_INFO_EX(arginfo_mariadb_profiler_tag, 0, 0, 1)
+    ZEND_ARG_INFO(0, tag)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_mariadb_profiler_untag, 0, 0, 0)
+    ZEND_ARG_INFO(0, tag)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_mariadb_profiler_get_tag, 0, 0, 0)
+ZEND_END_ARG_INFO()
+/* }}} */
+
 /* {{{ mariadb_profiler_functions[] */
 static const zend_function_entry mariadb_profiler_functions[] = {
+    PHP_FE(mariadb_profiler_tag,     arginfo_mariadb_profiler_tag)
+    PHP_FE(mariadb_profiler_untag,   arginfo_mariadb_profiler_untag)
+    PHP_FE(mariadb_profiler_get_tag, arginfo_mariadb_profiler_get_tag)
     PHP_FE_END
 };
 /* }}} */

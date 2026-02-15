@@ -43,6 +43,10 @@ extern zend_module_entry mariadb_profiler_module_entry;
 /* Include compatibility layer (must come after php.h and mysqlnd headers) */
 #include "php_mariadb_profiler_compat.h"
 
+/* Context tag limits */
+#define PROFILER_MAX_TAG_DEPTH 64
+#define PROFILER_MAX_TAG_LEN   256
+
 /* Module globals */
 ZEND_BEGIN_MODULE_GLOBALS(mariadb_profiler)
     zend_bool  enabled;
@@ -53,6 +57,11 @@ ZEND_BEGIN_MODULE_GLOBALS(mariadb_profiler)
     zend_long  job_check_interval; /* seconds between job file checks */
     char     **active_jobs;
     int        active_job_count;
+    /* Context tag stack */
+    char      *tag_stack[PROFILER_MAX_TAG_DEPTH];
+    int        tag_depth;
+    /* Trace settings */
+    zend_long  trace_depth;         /* 0=disabled, N=capture N frames */
 ZEND_END_MODULE_GLOBALS(mariadb_profiler)
 
 /* Globals accessor: extern declaration for use across compilation units */
@@ -88,8 +97,24 @@ char **profiler_job_get_active_list(int *count);
 
 /* Logging */
 void profiler_log_query(const char *query, size_t query_len);
-void profiler_log_raw(const char *job_key, const char *query, size_t query_len);
+void profiler_log_raw(const char *job_key, const char *query, size_t query_len,
+                      const char *tag, const char *trace_json);
 void profiler_log_init(void);
 void profiler_log_shutdown(void);
+
+/* Context tags */
+const char *profiler_tag_current(void);
+int         profiler_tag_push(const char *tag, size_t tag_len);
+char       *profiler_tag_pop(void);
+char       *profiler_tag_pop_until(const char *target, size_t target_len);
+void        profiler_tag_clear_all(void);
+
+/* Trace */
+char *profiler_trace_capture_json(void);
+
+/* PHP functions */
+PHP_FUNCTION(mariadb_profiler_tag);
+PHP_FUNCTION(mariadb_profiler_untag);
+PHP_FUNCTION(mariadb_profiler_get_tag);
 
 #endif /* PHP_MARIADB_PROFILER_H */
