@@ -332,7 +332,7 @@ class DemoE2ETest(unittest.TestCase):
             print(f"  Extension info saved to {phpinfo_path}")
 
         except Exception as e:
-            print(f"  Warning: Could not verify extension: {e}")
+            self.skipTest(f"Could not verify extension: {e}")
 
 
 if __name__ == "__main__":

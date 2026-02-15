@@ -205,27 +205,33 @@ function profilerApp() {
                     },
                 });
                 const data = await res.json();
-                session.active = false;
-                session.queryCount = data.query_count ?? null;
 
-                // Close WebSocket (tail -f will be killed server-side)
-                if (session.ws) {
-                    session.ws.close();
-                }
+                if (res.ok) {
+                    session.active = false;
+                    session.queryCount = data.query_count ?? null;
 
-                // Write final message to terminal
-                if (session.terminal) {
-                    session.terminal.writeln('');
-                    session.terminal.writeln(
-                        '\x1b[33m--- Session stopped' +
-                        (data.query_count !== undefined ? ` (${data.query_count} queries captured)` : '') +
-                        ' ---\x1b[0m'
-                    );
+                    // Close WebSocket (tail -f will be killed server-side)
+                    if (session.ws) {
+                        session.ws.close();
+                    }
+
+                    // Write final message to terminal
+                    if (session.terminal) {
+                        session.terminal.writeln('');
+                        session.terminal.writeln(
+                            '\x1b[33m--- Session stopped' +
+                            (data.query_count !== undefined ? ` (${data.query_count} queries captured)` : '') +
+                            ' ---\x1b[0m'
+                        );
+                    }
+                } else {
+                    console.error('Stop session failed:', data.error || res.statusText);
                 }
             } catch (e) {
                 console.error('Failed to stop session:', e);
+            } finally {
+                session.stopping = false;
             }
-            session.stopping = false;
         },
 
         async runDemoQueries() {
@@ -266,7 +272,7 @@ function profilerApp() {
                     selectionBackground: '#374151',
                 },
                 scrollback: 10000,
-                convertEol: false,
+                convertEol: true,
             });
 
             const fitAddon = new FitAddon.FitAddon();

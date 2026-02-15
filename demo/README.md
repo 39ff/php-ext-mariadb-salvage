@@ -21,7 +21,7 @@ Each session tab shows the raw query log in real-time via xterm.js.
 
 ## Architecture
 
-```
+```text
 Browser (:8080)
   |
   +-- HTTP --> Nginx --> PHP-FPM (Laravel + mariadb_profiler.so)
