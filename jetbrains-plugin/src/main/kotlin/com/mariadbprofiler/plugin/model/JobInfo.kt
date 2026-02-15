@@ -1,8 +1,15 @@
 package com.mariadbprofiler.plugin.model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.*
 
 @Serializable
 data class JobInfo(
@@ -44,11 +51,38 @@ data class JobInfo(
     }
 }
 
+/**
+ * PHP's json_encode turns empty associative arrays into [] (JSON array)
+ * but non-empty ones into {} (JSON object). This serializer handles both.
+ */
+object PhpMapSerializer : KSerializer<Map<String, JobData>> {
+    private val mapSerializer = MapSerializer(String.serializer(), JobData.serializer())
+
+    override val descriptor: SerialDescriptor = mapSerializer.descriptor
+
+    override fun serialize(encoder: Encoder, value: Map<String, JobData>) {
+        mapSerializer.serialize(encoder, value)
+    }
+
+    override fun deserialize(decoder: Decoder): Map<String, JobData> {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: return mapSerializer.deserialize(decoder)
+        val element = jsonDecoder.decodeJsonElement()
+        return when (element) {
+            is JsonArray -> emptyMap() // PHP empty array []
+            is JsonObject -> jsonDecoder.json.decodeFromJsonElement(mapSerializer, element)
+            else -> emptyMap()
+        }
+    }
+}
+
 @Serializable
 data class JobsFile(
     @SerialName("active_jobs")
+    @Serializable(with = PhpMapSerializer::class)
     val activeJobs: Map<String, JobData> = emptyMap(),
     @SerialName("completed_jobs")
+    @Serializable(with = PhpMapSerializer::class)
     val completedJobs: Map<String, JobData> = emptyMap()
 )
 
