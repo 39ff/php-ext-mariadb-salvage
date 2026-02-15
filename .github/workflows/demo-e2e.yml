@@ -86,7 +86,7 @@ jobs:
           LOG_OUTPUT_DIR: ${{ github.workspace }}/test-results/logs
         working-directory: demo
         run: |
-          python -m pytest tests/test_demo_e2e.py -v --tb=short --junitxml=${{ github.workspace }}/test-results/junit.xml 2>&1 || true
+          python -m pytest tests/test_demo_e2e.py -v --tb=short --junitxml=${{ github.workspace }}/test-results/junit.xml 2>&1
 
       - name: Collect Docker logs
         if: always()

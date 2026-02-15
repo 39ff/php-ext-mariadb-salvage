@@ -38,6 +38,12 @@ class ProfilerApiController extends Controller
         ], 500);
     }
 
+    /**
+     * Stop a profiling job.
+     *
+     * endJob() returns int|false: the query count (including 0) on success,
+     * or false if the job was not active. A count of 0 is a valid success.
+     */
     public function stop(string $key): JsonResponse
     {
         $manager = $this->manager();
@@ -58,20 +64,11 @@ class ProfilerApiController extends Controller
 
     public function list(): JsonResponse
     {
-        $jobsFile = $this->logDir . '/jobs.json';
-
-        if (!file_exists($jobsFile)) {
-            return response()->json([
-                'active_jobs' => [],
-                'completed_jobs' => [],
-            ]);
-        }
-
-        $data = json_decode(file_get_contents($jobsFile), true) ?: [];
+        $jobs = $this->manager()->listAllJobs();
 
         return response()->json([
-            'active_jobs' => $data['active_jobs'] ?? [],
-            'completed_jobs' => $data['completed_jobs'] ?? [],
+            'active_jobs' => $jobs['active'] ?? [],
+            'completed_jobs' => $jobs['completed'] ?? [],
         ]);
     }
 
