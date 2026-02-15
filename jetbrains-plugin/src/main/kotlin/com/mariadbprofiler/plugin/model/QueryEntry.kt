@@ -22,13 +22,18 @@ data class QueryEntry(
     /**
      * Query with `?` placeholders replaced by bound values.
      *
-     * Only replaces `?` characters that appear **outside** single-quoted SQL
-     * string literals.  Handles both doubled single-quotes (`''`) and backslash
-     * escapes (`\'`, `\\`, etc.) inside literals, matching MySQL/MariaDB default
-     * behavior (when `NO_BACKSLASH_ESCAPES` is not set).
+     * Replaces `?` characters that appear **outside** quoted contexts and
+     * SQL comments.  The parser recognises:
+     *  - Single-quoted string literals (`'...'`) with `''` and backslash
+     *    escapes (`\'`, `\\`, etc.), matching MySQL/MariaDB default behavior
+     *    (when `NO_BACKSLASH_ESCAPES` is not set)
+     *  - Double-quoted string literals (`"..."`) with `""` as escaped quote
+     *  - Backtick-quoted identifiers (`` `...` ``)
+     *  - Line comments (`-- ...`)
+     *  - Block comments (`/* ... */`)
      *
-     * Param values are wrapped in single quotes with internal single-quotes
-     * doubled (`O'Brien` → `'O''Brien'`); NULL params are emitted bare.
+     * Param values are wrapped in single quotes with internal backslashes
+     * doubled and single-quotes doubled; NULL params are emitted bare.
      */
     val boundQuery: String?
         get() {
@@ -36,59 +41,93 @@ data class QueryEntry(
 
             val sb = StringBuilder(query.length + params.size * 8)
             var paramIdx = 0
-            var inString = false
             var i = 0
 
             while (i < query.length) {
                 val ch = query[i]
 
-                if (inString) {
-                    if (ch == '\\') {
-                        /* backslash escape: \' \\ etc. – copy both chars, stay in string */
-                        if (i + 1 < query.length) {
-                            sb.append(ch)
-                            sb.append(query[i + 1])
-                            i += 2
-                            continue
-                        }
-                        /* trailing backslash – just append it */
-                        sb.append(ch)
-                    } else if (ch == '\'') {
-                        /* '' inside a literal is an escaped quote – stay in string */
-                        if (i + 1 < query.length && query[i + 1] == '\'') {
-                            sb.append("''")
-                            i += 2
-                            continue
-                        }
-                        /* closing quote */
-                        inString = false
-                        sb.append(ch)
+                // -- line comment: copy through to end of line
+                if (ch == '-' && i + 1 < query.length && query[i + 1] == '-') {
+                    val eol = query.indexOf('\n', i)
+                    if (eol == -1) {
+                        sb.append(query, i, query.length)
+                        i = query.length
                     } else {
-                        sb.append(ch)
+                        sb.append(query, i, eol + 1)
+                        i = eol + 1
                     }
-                } else {
-                    when (ch) {
-                        '\'' -> {
-                            inString = true
-                            sb.append(ch)
-                        }
-                        '?' -> {
-                            if (paramIdx < params.size) {
-                                val v = params[paramIdx++]
-                                if (v == null) {
-                                    sb.append("NULL")
-                                } else {
-                                    sb.append('\'')
-                                    sb.append(v.replace("'", "''"))
-                                    sb.append('\'')
-                                }
-                            } else {
-                                sb.append(ch) // more ?'s than params – keep as-is
-                            }
-                        }
-                        else -> sb.append(ch)
-                    }
+                    continue
                 }
+
+                // /* block comment */: copy through to closing */
+                if (ch == '/' && i + 1 < query.length && query[i + 1] == '*') {
+                    val close = query.indexOf("*/", i + 2)
+                    if (close == -1) {
+                        sb.append(query, i, query.length)
+                        i = query.length
+                    } else {
+                        sb.append(query, i, close + 2)
+                        i = close + 2
+                    }
+                    continue
+                }
+
+                // Quoted context: single-quote, double-quote, or backtick
+                if (ch == '\'' || ch == '"' || ch == '`') {
+                    val quote = ch
+                    sb.append(ch)
+                    i++
+                    while (i < query.length) {
+                        val qch = query[i]
+                        // Backslash escape inside single- and double-quoted strings
+                        if (qch == '\\' && (quote == '\'' || quote == '"')) {
+                            sb.append(qch)
+                            if (i + 1 < query.length) {
+                                sb.append(query[i + 1])
+                                i += 2
+                            } else {
+                                i++
+                            }
+                            continue
+                        }
+                        if (qch == quote) {
+                            // doubled-quote escape ('' / "" inside their respective literals)
+                            if (i + 1 < query.length && query[i + 1] == quote) {
+                                sb.append(quote)
+                                sb.append(quote)
+                                i += 2
+                                continue
+                            }
+                            // closing quote
+                            sb.append(quote)
+                            i++
+                            break
+                        }
+                        sb.append(qch)
+                        i++
+                    }
+                    continue
+                }
+
+                // Parameter placeholder
+                if (ch == '?') {
+                    if (paramIdx < params.size) {
+                        val v = params[paramIdx++]
+                        if (v == null) {
+                            sb.append("NULL")
+                        } else {
+                            sb.append('\'')
+                            sb.append(v.replace("\\", "\\\\").replace("'", "''"))
+                            sb.append('\'')
+                        }
+                    } else {
+                        sb.append(ch) // more ?'s than params – keep as-is
+                    }
+                    i++
+                    continue
+                }
+
+                sb.append(ch)
                 i++
             }
             return sb.toString()

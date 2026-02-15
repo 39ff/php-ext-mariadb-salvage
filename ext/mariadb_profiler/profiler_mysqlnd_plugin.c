@@ -167,6 +167,10 @@ MYSQLND_METHOD(profiler_stmt, prepare)(
  * st_mysqlnd_stmt_data (fields param_bind, param_count) has been stable
  * from PHP 7.0 through 8.4.  Guard direct access so that an unknown
  * future mysqlnd silently degrades to "no params" instead of crashing.
+ *
+ * NOTE: The upper bound (80500) is a defensive estimate – it should be
+ * updated once PHP 8.5 is released and its mysqlnd ABI has been verified.
+ * If the ABI remains unchanged, simply bump the upper bound.
  */
 #define PROFILER_MYSQLND_PARAM_ACCESS_SAFE \
     (MYSQLND_VERSION_ID >= 70000 && MYSQLND_VERSION_ID < 80500)
@@ -214,15 +218,41 @@ static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
                 pos += 4;
                 break;
 
-            case IS_LONG:
-                pos += snprintf(buf + pos, buf_size - pos, "\"%ld\"",
+            case IS_LONG: {
+                int written = snprintf(buf + pos, buf_size - pos, "\"%ld\"",
                     (long)Z_LVAL_P(zv));
+                if (written < 0) {
+                    break; /* encoding error */
+                }
+                if ((size_t)written >= buf_size - pos) {
+                    /* Truncated – grow and retry */
+                    buf_size = pos + (size_t)written + 64;
+                    buf = (char *)erealloc(buf, buf_size);
+                    pos += snprintf(buf + pos, buf_size - pos, "\"%ld\"",
+                        (long)Z_LVAL_P(zv));
+                } else {
+                    pos += (size_t)written;
+                }
                 break;
+            }
 
-            case IS_DOUBLE:
-                pos += snprintf(buf + pos, buf_size - pos, "\"%g\"",
+            case IS_DOUBLE: {
+                int written = snprintf(buf + pos, buf_size - pos, "\"%g\"",
                     Z_DVAL_P(zv));
+                if (written < 0) {
+                    break; /* encoding error */
+                }
+                if ((size_t)written >= buf_size - pos) {
+                    /* Truncated – grow and retry */
+                    buf_size = pos + (size_t)written + 64;
+                    buf = (char *)erealloc(buf, buf_size);
+                    pos += snprintf(buf + pos, buf_size - pos, "\"%g\"",
+                        Z_DVAL_P(zv));
+                } else {
+                    pos += (size_t)written;
+                }
                 break;
+            }
 
             case IS_TRUE:
                 memcpy(buf + pos, "\"1\"", 3);

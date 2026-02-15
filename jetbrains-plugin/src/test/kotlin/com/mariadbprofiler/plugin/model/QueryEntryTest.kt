@@ -3,6 +3,7 @@ package com.mariadbprofiler.plugin.model
 import kotlinx.serialization.json.Json
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class QueryEntryTest {
@@ -69,6 +70,165 @@ class QueryEntryTest {
         assertEquals("SELECT * FROM users", entry.shortSql)
     }
 
+    // ---- boundQuery tests ----
+
+    @Test
+    fun `boundQuery returns null when no params`() {
+        val entry = QueryEntry(query = "SELECT 1")
+        assertNull(entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery replaces single placeholder`() {
+        val entry = QueryEntry(query = "SELECT * FROM users WHERE id = ?", params = listOf("42"))
+        assertEquals("SELECT * FROM users WHERE id = '42'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery replaces multiple placeholders`() {
+        val entry = QueryEntry(
+            query = "INSERT INTO t (a, b, c) VALUES (?, ?, ?)",
+            params = listOf("x", "y", "z")
+        )
+        assertEquals("INSERT INTO t (a, b, c) VALUES ('x', 'y', 'z')", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles NULL params`() {
+        val entry = QueryEntry(
+            query = "INSERT INTO t (a, b) VALUES (?, ?)",
+            params = listOf(null, "val")
+        )
+        assertEquals("INSERT INTO t (a, b) VALUES (NULL, 'val')", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery keeps extra placeholders when fewer params than placeholders`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t WHERE a = ? AND b = ? AND c = ?",
+            params = listOf("1")
+        )
+        assertEquals("SELECT * FROM t WHERE a = '1' AND b = ? AND c = ?", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery ignores extra params when more params than placeholders`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t WHERE a = ?",
+            params = listOf("1", "2", "3")
+        )
+        assertEquals("SELECT * FROM t WHERE a = '1'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery does not replace placeholder inside single-quoted string`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t WHERE a = '?' AND b = ?",
+            params = listOf("val")
+        )
+        assertEquals("SELECT * FROM t WHERE a = '?' AND b = 'val'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles escaped single quotes in SQL literal`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t WHERE a = 'it''s' AND b = ?",
+            params = listOf("x")
+        )
+        assertEquals("SELECT * FROM t WHERE a = 'it''s' AND b = 'x'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery escapes single quotes in param values`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t WHERE name = ?",
+            params = listOf("O'Brien")
+        )
+        assertEquals("SELECT * FROM t WHERE name = 'O''Brien'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery escapes backslashes in param values`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t WHERE path = ?",
+            params = listOf("C:\\tmp")
+        )
+        assertEquals("SELECT * FROM t WHERE path = 'C:\\\\tmp'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery escapes backslash and quote together`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t WHERE v = ?",
+            params = listOf("a\\nb's")
+        )
+        assertEquals("SELECT * FROM t WHERE v = 'a\\\\nb''s'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery does not replace placeholder inside double-quoted string`() {
+        val entry = QueryEntry(
+            query = """SELECT * FROM t WHERE a = "?" AND b = ?""",
+            params = listOf("val")
+        )
+        assertEquals("""SELECT * FROM t WHERE a = "?" AND b = 'val'""", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles escaped double quotes inside double-quoted string`() {
+        val entry = QueryEntry(
+            query = """SELECT * FROM t WHERE a = "say""what" AND b = ?""",
+            params = listOf("x")
+        )
+        assertEquals("""SELECT * FROM t WHERE a = "say""what" AND b = 'x'""", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery does not replace placeholder inside backtick-quoted identifier`() {
+        val entry = QueryEntry(
+            query = "SELECT `?` FROM t WHERE id = ?",
+            params = listOf("1")
+        )
+        assertEquals("SELECT `?` FROM t WHERE id = '1'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery skips placeholder in line comment`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t -- where id = ?\nWHERE name = ?",
+            params = listOf("test")
+        )
+        assertEquals("SELECT * FROM t -- where id = ?\nWHERE name = 'test'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery skips placeholder in block comment`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t /* ? */ WHERE id = ?",
+            params = listOf("42")
+        )
+        assertEquals("SELECT * FROM t /* ? */ WHERE id = '42'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles block comment with quote inside`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t /* it's ? */ WHERE id = ?",
+            params = listOf("1")
+        )
+        assertEquals("SELECT * FROM t /* it's ? */ WHERE id = '1'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles unclosed block comment`() {
+        val entry = QueryEntry(
+            query = "SELECT * /* unclosed ? ",
+            params = listOf("x")
+        )
+        // ? is inside unclosed comment, no replacement
+        assertEquals("SELECT * /* unclosed ? ", entry.boundQuery)
+    }
+
     @Test
     fun `parse entry with backtrace`() {
         val jsonStr = """
@@ -96,15 +256,6 @@ class QueryEntryTest {
             params = listOf("John", "25")
         )
         assertEquals("SELECT * FROM users WHERE name = 'John' AND age = '25'", entry.boundQuery)
-    }
-
-    @Test
-    fun `boundQuery handles NULL params`() {
-        val entry = QueryEntry(
-            query = "SELECT * FROM users WHERE name = ? AND email = ?",
-            params = listOf("John", null)
-        )
-        assertEquals("SELECT * FROM users WHERE name = 'John' AND email = NULL", entry.boundQuery)
     }
 
     @Test
@@ -168,12 +319,6 @@ class QueryEntryTest {
             params = listOf("active")
         )
         assertEquals("SELECT * FROM users WHERE name = 'can\\'t' AND status = 'active'", entry.boundQuery)
-    }
-
-    @Test
-    fun `boundQuery returns null when no params`() {
-        val entry = QueryEntry(query = "SELECT * FROM users")
-        assertEquals(null, entry.boundQuery)
     }
 
     @Test
