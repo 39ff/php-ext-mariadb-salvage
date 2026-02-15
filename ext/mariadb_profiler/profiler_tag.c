@@ -209,8 +209,6 @@ PHP_FUNCTION(mariadb_profiler_untag)
             efree(popped);
             return;
         }
-        php_error_docref(NULL TSRMLS_CC, E_WARNING,
-            "mariadb_profiler: tag '%s' not found in stack", tag);
         RETURN_NULL();
     }
 }
