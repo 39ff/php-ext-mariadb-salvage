@@ -116,9 +116,10 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
             val jobManager = project.getService(JobManagerService::class.java)
             val jsonlPath = jobManager.getJsonlPath(job.key)
 
-            val (entries, newOffset) = logParser.parseJsonlFileFromOffset(jsonlPath, 0)
+            val entries = logParser.parseJsonlFile(jsonlPath)
             currentEntries = entries.toMutableList()
-            jsonlOffset = newOffset
+            val jsonlFile = java.io.File(jsonlPath)
+            jsonlOffset = if (jsonlFile.exists()) jsonlFile.length() else 0
 
             queryLogPanel.setEntries(currentEntries)
             queryDetailPanel.showEntry(null)

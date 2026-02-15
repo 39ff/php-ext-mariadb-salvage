@@ -5,10 +5,8 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.mariadbprofiler.plugin.model.QueryEntry
 import kotlinx.serialization.json.Json
-import java.io.BufferedReader
 import java.io.File
-import java.io.FileInputStream
-import java.io.InputStreamReader
+import java.io.RandomAccessFile
 import java.nio.charset.StandardCharsets
 
 @Service(Service.Level.PROJECT)
@@ -24,9 +22,6 @@ class LogParserService(private val project: Project) {
     fun parseJsonlFile(filePath: String): List<QueryEntry> {
         val file = File(filePath)
         if (!file.exists() || !file.canRead()) {
-            log.warn("Cannot read JSONL file: $filePath")
-            val errorLog = project.getService(ErrorLogService::class.java)
-            errorLog.addError("LogParser", "Cannot read JSONL file: $filePath")
             return emptyList()
         }
 
@@ -52,19 +47,28 @@ class LogParserService(private val project: Project) {
         return entries
     }
 
+    /**
+     * Read JSONL entries starting from byte offset.
+     * Returns (entries, newOffset) where newOffset is the file size at read time.
+     */
     fun parseJsonlFileFromOffset(filePath: String, offset: Long): Pair<List<QueryEntry>, Long> {
         val file = File(filePath)
         if (!file.exists() || !file.canRead()) {
             return Pair(emptyList(), offset)
         }
 
+        val fileSize = file.length()
+        if (fileSize <= offset) {
+            return Pair(emptyList(), offset)
+        }
+
         val entries = mutableListOf<QueryEntry>()
-        val fis = FileInputStream(file)
-        try {
-            val channel = fis.channel
-            channel.position(offset)
-            val reader = BufferedReader(InputStreamReader(fis, StandardCharsets.UTF_8))
-            reader.forEachLine { line ->
+        RandomAccessFile(file, "r").use { raf ->
+            raf.seek(offset)
+            val bytes = ByteArray((fileSize - offset).toInt())
+            raf.readFully(bytes)
+            val content = String(bytes, StandardCharsets.UTF_8)
+            for (line in content.lines()) {
                 val trimmed = line.trim()
                 if (trimmed.isNotEmpty()) {
                     try {
@@ -74,10 +78,8 @@ class LogParserService(private val project: Project) {
                     }
                 }
             }
-            return Pair(entries, channel.position())
-        } finally {
-            fis.close()
         }
+        return Pair(entries, fileSize)
     }
 
     fun readRawLog(filePath: String, maxLines: Int = 500): List<String> {
@@ -98,26 +100,33 @@ class LogParserService(private val project: Project) {
         return buffer.toList()
     }
 
+    /**
+     * Read raw log lines starting from byte offset.
+     * Returns (lines, newOffset) where newOffset is the file size at read time.
+     */
     fun tailRawLog(filePath: String, fromOffset: Long): Pair<List<String>, Long> {
         val file = File(filePath)
         if (!file.exists() || !file.canRead()) {
             return Pair(emptyList(), fromOffset)
         }
 
-        val fis = FileInputStream(file)
-        try {
-            val channel = fis.channel
-            channel.position(fromOffset)
-            val reader = BufferedReader(InputStreamReader(fis, StandardCharsets.UTF_8))
-            val lines = mutableListOf<String>()
-            reader.forEachLine { line ->
+        val fileSize = file.length()
+        if (fileSize <= fromOffset) {
+            return Pair(emptyList(), fromOffset)
+        }
+
+        val lines = mutableListOf<String>()
+        RandomAccessFile(file, "r").use { raf ->
+            raf.seek(fromOffset)
+            val bytes = ByteArray((fileSize - fromOffset).toInt())
+            raf.readFully(bytes)
+            val content = String(bytes, StandardCharsets.UTF_8)
+            for (line in content.lines()) {
                 if (line.isNotEmpty()) {
                     lines.add(line)
                 }
             }
-            return Pair(lines, channel.position())
-        } finally {
-            fis.close()
         }
+        return Pair(lines, fileSize)
     }
 }

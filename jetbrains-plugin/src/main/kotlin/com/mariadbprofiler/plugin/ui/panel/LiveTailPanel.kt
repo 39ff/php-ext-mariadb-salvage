@@ -26,16 +26,11 @@ class LiveTailPanel(private val project: Project) : JPanel(BorderLayout()) {
         foreground = JBColor.GRAY
     }
 
-    private val countLabel = JBLabel("0 queries").apply {
-        foreground = JBColor.GRAY
-    }
-
     private val clearButton = JButton("Clear")
 
     private var isMonitoring = false
     private var currentJobKey: String? = null
     private var tailOffset: Long = 0
-    private var queryCount: Int = 0
     private val maxLines = 500
 
     init {
@@ -48,8 +43,6 @@ class LiveTailPanel(private val project: Project) : JPanel(BorderLayout()) {
         toolbar.add(clearButton)
         toolbar.add(Box.createHorizontalStrut(12))
         toolbar.add(statusLabel)
-        toolbar.add(Box.createHorizontalStrut(12))
-        toolbar.add(countLabel)
         add(toolbar, BorderLayout.NORTH)
 
         // Log area
@@ -58,8 +51,6 @@ class LiveTailPanel(private val project: Project) : JPanel(BorderLayout()) {
         // Button handlers
         clearButton.addActionListener {
             logArea.text = ""
-            queryCount = 0
-            countLabel.text = "0 queries"
         }
     }
 
@@ -79,38 +70,25 @@ class LiveTailPanel(private val project: Project) : JPanel(BorderLayout()) {
         val fileWatcher = project.getService(FileWatcherService::class.java)
         val jobManager = project.getService(JobManagerService::class.java)
 
-        val jsonlPath = jobManager.getJsonlPath(jobKey)
+        val rawLogPath = jobManager.getRawLogPath(jobKey)
         tailOffset = 0
-        queryCount = 0
         logArea.text = ""
 
         // Load existing content
-        val (existingEntries, initialOffset) = logParser.parseJsonlFileFromOffset(jsonlPath, 0)
-        if (existingEntries.isNotEmpty()) {
-            val sb = StringBuilder()
-            for (entry in existingEntries) {
-                sb.append(formatQueryEntry(entry))
-            }
-            logArea.text = sb.toString()
-            queryCount = existingEntries.size
-            countLabel.text = "$queryCount queries"
-            tailOffset = initialOffset
-            logArea.caretPosition = logArea.document.length
+        val existingLines = logParser.readRawLog(rawLogPath, maxLines)
+        if (existingLines.isNotEmpty()) {
+            logArea.text = existingLines.joinToString("\n") + "\n"
+            val file = java.io.File(rawLogPath)
+            if (file.exists()) tailOffset = file.length()
         }
 
-        // Watch the JSONL file for changes
-        fileWatcher.watchFile(jsonlPath) {
+        // Watch for changes
+        fileWatcher.watchFile(rawLogPath) {
             SwingUtilities.invokeLater {
-                val (newEntries, newOffset) = logParser.parseJsonlFileFromOffset(jsonlPath, tailOffset)
-                if (newEntries.isNotEmpty()) {
-                    val sb = StringBuilder()
-                    for (entry in newEntries) {
-                        sb.append(formatQueryEntry(entry))
-                    }
-                    logArea.append(sb.toString())
+                val (newLines, newOffset) = logParser.tailRawLog(rawLogPath, tailOffset)
+                if (newLines.isNotEmpty()) {
+                    logArea.append(newLines.joinToString("\n") + "\n")
                     tailOffset = newOffset
-                    queryCount += newEntries.size
-                    countLabel.text = "$queryCount queries"
 
                     // Trim if too many lines
                     val lineCount = logArea.lineCount
@@ -135,18 +113,10 @@ class LiveTailPanel(private val project: Project) : JPanel(BorderLayout()) {
         val fileWatcher = project.getService(FileWatcherService::class.java)
         val jobManager = project.getService(JobManagerService::class.java)
 
-        fileWatcher.unwatchFile(jobManager.getJsonlPath(jobKey))
+        fileWatcher.unwatchFile(jobManager.getRawLogPath(jobKey))
 
         isMonitoring = false
         statusLabel.text = "Stopped"
         statusLabel.foreground = JBColor.GRAY
-    }
-
-    private fun formatQueryEntry(entry: com.mariadbprofiler.plugin.model.QueryEntry): String {
-        val ts = entry.formattedTimestamp
-        val type = entry.queryType.label.padEnd(7)
-        val tag = if (entry.tags.isNotEmpty()) " [${entry.tags.joinToString(",")}]" else ""
-        val src = if (entry.sourceFile.isNotEmpty()) "  <- ${entry.sourceFile}" else ""
-        return "$ts  $type  ${entry.query}$tag$src\n"
     }
 }
