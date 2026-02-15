@@ -29,6 +29,10 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Generate Gradle wrapper
+        working-directory: jetbrains-plugin
+        run: gradle wrapper
+
       - name: Run tests
         working-directory: jetbrains-plugin
         run: ./gradlew test
