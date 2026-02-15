@@ -88,4 +88,110 @@ class QueryEntryTest {
         assertEquals(42, entry.backtrace[0].line)
         assertEquals("UserController.php:42", entry.sourceFile)
     }
+
+    @Test
+    fun `boundQuery replaces placeholders with params`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM users WHERE name = ? AND age = ?",
+            params = listOf("John", "25")
+        )
+        assertEquals("SELECT * FROM users WHERE name = 'John' AND age = '25'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles NULL params`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM users WHERE name = ? AND email = ?",
+            params = listOf("John", null)
+        )
+        assertEquals("SELECT * FROM users WHERE name = 'John' AND email = NULL", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery escapes single quotes in params`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM users WHERE name = ?",
+            params = listOf("O'Brien")
+        )
+        assertEquals("SELECT * FROM users WHERE name = 'O''Brien'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery does not replace placeholders inside single-quoted strings`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM users WHERE name = 'test?' AND age = ?",
+            params = listOf("25")
+        )
+        assertEquals("SELECT * FROM users WHERE name = 'test?' AND age = '25'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles doubled single-quotes inside strings`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM users WHERE name = 'O''Brien' AND age = ?",
+            params = listOf("25")
+        )
+        assertEquals("SELECT * FROM users WHERE name = 'O''Brien' AND age = '25'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles backslash-escaped single quotes`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM users WHERE name = 'O\\'Brien' AND age = ?",
+            params = listOf("25")
+        )
+        assertEquals("SELECT * FROM users WHERE name = 'O\\'Brien' AND age = '25'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles backslash-escaped backslashes`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM paths WHERE path = 'C:\\\\Users\\\\test' AND id = ?",
+            params = listOf("1")
+        )
+        assertEquals("SELECT * FROM paths WHERE path = 'C:\\\\Users\\\\test' AND id = '1'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles mixed escape sequences`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM data WHERE value = 'test\\nline' AND name = ?",
+            params = listOf("John")
+        )
+        assertEquals("SELECT * FROM data WHERE value = 'test\\nline' AND name = 'John'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles placeholder at end of backslash-escaped string`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM users WHERE name = 'can\\'t' AND status = ?",
+            params = listOf("active")
+        )
+        assertEquals("SELECT * FROM users WHERE name = 'can\\'t' AND status = 'active'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery returns null when no params`() {
+        val entry = QueryEntry(query = "SELECT * FROM users")
+        assertEquals(null, entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles more placeholders than params`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM users WHERE name = ? AND age = ? AND email = ?",
+            params = listOf("John", "25")
+        )
+        // Should replace first two, leave third as-is
+        assertEquals("SELECT * FROM users WHERE name = 'John' AND age = '25' AND email = ?", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery handles complex nested strings`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM logs WHERE msg = 'User said \\'hello\\'' AND id = ?",
+            params = listOf("123")
+        )
+        assertEquals("SELECT * FROM logs WHERE msg = 'User said \\'hello\\'' AND id = '123'", entry.boundQuery)
+    }
 }
