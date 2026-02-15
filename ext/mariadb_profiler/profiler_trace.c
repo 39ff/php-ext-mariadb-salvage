@@ -16,53 +16,13 @@
 #include "zend_builtin_functions.h"
 #include "php_mariadb_profiler.h"
 #include "profiler_trace.h"
+#include "profiler_log.h"
 
 #include <string.h>
 
-/* Forward declaration for the JSON escape function in profiler_log.c */
-static char *profiler_trace_escape_json(const char *str, size_t len)
-{
-    size_t i;
-    size_t out_len = 0;
-    char *out;
-    char *p;
-
-    for (i = 0; i < len; i++) {
-        switch (str[i]) {
-            case '"':  case '\\':
-                out_len += 2; break;
-            default:
-                if ((unsigned char)str[i] < 0x20) {
-                    out_len += 6;
-                } else {
-                    out_len++;
-                }
-        }
-    }
-
-    out = (char *)emalloc(out_len + 1);
-    p = out;
-
-    for (i = 0; i < len; i++) {
-        switch (str[i]) {
-            case '"':  *p++ = '\\'; *p++ = '"';  break;
-            case '\\': *p++ = '\\'; *p++ = '\\'; break;
-            default:
-                if ((unsigned char)str[i] < 0x20) {
-                    p += snprintf(p, 7, "\\u%04x", (unsigned char)str[i]);
-                } else {
-                    *p++ = str[i];
-                }
-        }
-    }
-    *p = '\0';
-
-    return out;
-}
-
 /* {{{ profiler_trace_append_frame
  * Append a single trace frame as JSON object to the buffer.
- * Returns the new position in the buffer. */
+ * Returns the new position in the buffer (unchanged if buffer is full). */
 static int profiler_trace_append_frame(
     char *buf, int pos, int buf_size,
     const char *call, const char *file, long line, int is_first)
@@ -72,10 +32,10 @@ static int profiler_trace_append_frame(
     int written;
 
     if (call) {
-        escaped_call = profiler_trace_escape_json(call, strlen(call));
+        escaped_call = profiler_log_escape_json_string(call, strlen(call));
     }
     if (file) {
-        escaped_file = profiler_trace_escape_json(file, strlen(file));
+        escaped_file = profiler_log_escape_json_string(file, strlen(file));
     }
 
     written = snprintf(buf + pos, buf_size - pos,
@@ -129,6 +89,7 @@ char *profiler_trace_capture_json(void)
         const char *file_str = "";
         long line_val = 0;
         char call_buf[512];
+        int prev_pos;
 
         if (Z_TYPE_P(frame) != IS_ARRAY) continue;
 
@@ -157,9 +118,12 @@ char *profiler_trace_capture_json(void)
             snprintf(call_buf, sizeof(call_buf), "(unknown)");
         }
 
+        prev_pos = pos;
         pos = profiler_trace_append_frame(buf, pos, sizeof(buf),
             call_buf, file_str, line_val, is_first);
-        is_first = 0;
+        if (pos != prev_pos) {
+            is_first = 0;
+        }
 
         /* Stop if buffer is nearly full */
         if (pos >= (int)sizeof(buf) - 256) break;
@@ -214,6 +178,7 @@ char *profiler_trace_capture_json(void)
         const char *file_str = "";
         long line_val = 0;
         char call_buf[512];
+        int prev_pos;
 
         if (Z_TYPE_PP(frame) != IS_ARRAY) continue;
 
@@ -242,9 +207,12 @@ char *profiler_trace_capture_json(void)
             snprintf(call_buf, sizeof(call_buf), "(unknown)");
         }
 
+        prev_pos = pos;
         pos = profiler_trace_append_frame(buf, pos, sizeof(buf),
             call_buf, file_str, line_val, is_first);
-        is_first = 0;
+        if (pos != prev_pos) {
+            is_first = 0;
+        }
 
         if (pos >= (int)sizeof(buf) - 256) break;
     }

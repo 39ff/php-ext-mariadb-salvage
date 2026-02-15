@@ -9,6 +9,8 @@
 #ifndef PROFILER_TAG_H
 #define PROFILER_TAG_H
 
+#include <stddef.h> /* size_t */
+
 /* Get the current (top of stack) tag, or NULL if none */
 const char *profiler_tag_current(void);
 

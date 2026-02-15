@@ -90,6 +90,9 @@ char *profiler_tag_pop_until(const char *target, size_t target_len)
     }
 
     if (found < 0) {
+        php_error_docref(NULL TSRMLS_CC, E_WARNING,
+            "mariadb_profiler: tag '%.*s' not found in stack",
+            (int)target_len, target);
         return NULL;
     }
 
