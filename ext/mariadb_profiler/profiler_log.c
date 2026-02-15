@@ -108,10 +108,10 @@ static double profiler_log_get_microtime(void)
 
 /* {{{ profiler_log_raw
  * Write raw query to job's raw log file.
- * tag, trace_json, and params_json may be NULL. */
+ * tag, trace_json, params_json, and status may be NULL. */
 void profiler_log_raw(const char *job_key, const char *query, size_t query_len,
                       const char *tag, const char *trace_json,
-                      const char *params_json)
+                      const char *params_json, const char *status)
 {
     char *filepath;
     FILE *fp;
@@ -133,9 +133,11 @@ void profiler_log_raw(const char *job_key, const char *query, size_t query_len,
     timestamp = profiler_log_get_timestamp();
 
     if (tag) {
-        fprintf(fp, "[%s] [%s] %.*s\n", timestamp, tag, (int)query_len, query);
+        fprintf(fp, "[%s] [%s] [%s] %.*s\n", timestamp,
+                status ? status : "ok", tag, (int)query_len, query);
     } else {
-        fprintf(fp, "[%s] %.*s\n", timestamp, (int)query_len, query);
+        fprintf(fp, "[%s] [%s] %.*s\n", timestamp,
+                status ? status : "ok", (int)query_len, query);
     }
 
     /* Append bound parameter values if present */
@@ -202,11 +204,11 @@ void profiler_log_raw(const char *job_key, const char *query, size_t query_len,
 
 /* {{{ profiler_log_jsonl
  * Write JSON line to job's parsed log file.
- * tag, trace_json, and params_json may be NULL.
+ * tag, trace_json, params_json, and status may be NULL.
  * SQL parsing (table/column extraction) is done by the CLI tool. */
 static void profiler_log_jsonl(const char *job_key, const char *query, size_t query_len,
                                const char *tag, const char *trace_json,
-                               const char *params_json)
+                               const char *params_json, const char *status)
 {
     char *filepath;
     FILE *fp;
@@ -251,6 +253,10 @@ static void profiler_log_jsonl(const char *job_key, const char *query, size_t qu
         fprintf(fp, ",\"trace\":%s", trace_json);
     }
 
+    if (status) {
+        fprintf(fp, ",\"s\":\"%s\"", status);
+    }
+
     fprintf(fp, ",\"ts\":%.6f}\n", ts);
 
     efree(escaped_query);
@@ -265,10 +271,11 @@ static void profiler_log_jsonl(const char *job_key, const char *query, size_t qu
 /* }}} */
 
 /* {{{ profiler_log_query_internal
- * Internal: log a query to all active jobs with optional params.
+ * Internal: log a query to all active jobs with optional params and status.
  * Captures the current context tag and PHP trace once, shared across all jobs. */
 static void profiler_log_query_internal(const char *query, size_t query_len,
-                                        const char *params_json)
+                                        const char *params_json,
+                                        const char *status)
 {
     char **jobs;
     int job_count;
@@ -289,11 +296,11 @@ static void profiler_log_query_internal(const char *query, size_t query_len,
 
     for (i = 0; i < job_count; i++) {
         /* Write JSONL entry */
-        profiler_log_jsonl(jobs[i], query, query_len, tag, trace_json, params_json);
+        profiler_log_jsonl(jobs[i], query, query_len, tag, trace_json, params_json, status);
 
         /* Write raw log if enabled */
         if (PROFILER_G(raw_log)) {
-            profiler_log_raw(jobs[i], query, query_len, tag, trace_json, params_json);
+            profiler_log_raw(jobs[i], query, query_len, tag, trace_json, params_json, status);
         }
     }
 
@@ -304,19 +311,21 @@ static void profiler_log_query_internal(const char *query, size_t query_len,
 /* }}} */
 
 /* {{{ profiler_log_query
- * Main entry point: log a query (without params) to all active jobs. */
-void profiler_log_query(const char *query, size_t query_len)
+ * Main entry point: log a query (without params) to all active jobs.
+ * status is "ok" or "err" (NULL treated as "ok"). */
+void profiler_log_query(const char *query, size_t query_len, const char *status)
 {
-    profiler_log_query_internal(query, query_len, NULL);
+    profiler_log_query_internal(query, query_len, NULL, status);
 }
 /* }}} */
 
 /* {{{ profiler_log_query_with_params
- * Log a prepared statement query with bound parameter values to all active jobs. */
+ * Log a prepared statement query with bound parameter values to all active jobs.
+ * status is "ok" or "err" (NULL treated as "ok"). */
 void profiler_log_query_with_params(const char *query, size_t query_len,
-                                    const char *params_json)
+                                    const char *params_json, const char *status)
 {
-    profiler_log_query_internal(query, query_len, params_json);
+    profiler_log_query_internal(query, query_len, params_json, status);
 }
 /* }}} */
 

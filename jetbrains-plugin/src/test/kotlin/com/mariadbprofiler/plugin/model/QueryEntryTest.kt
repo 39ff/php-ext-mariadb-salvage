@@ -339,4 +339,69 @@ class QueryEntryTest {
         )
         assertEquals("SELECT * FROM logs WHERE msg = 'User said \\'hello\\'' AND id = '123'", entry.boundQuery)
     }
+
+    // ---- status field tests ----
+
+    @Test
+    fun `parse entry with status ok`() {
+        val jsonStr = """{"k":"job1","q":"SELECT 1","s":"ok","ts":1705970401.0}"""
+        val entry = json.decodeFromString<QueryEntry>(jsonStr)
+        assertEquals("ok", entry.status)
+    }
+
+    @Test
+    fun `parse entry with status err`() {
+        val jsonStr = """{"k":"job1","q":"SELECT bad","s":"err","ts":1705970401.0}"""
+        val entry = json.decodeFromString<QueryEntry>(jsonStr)
+        assertEquals("err", entry.status)
+    }
+
+    @Test
+    fun `parse entry without status defaults to null`() {
+        val jsonStr = """{"k":"job1","q":"SELECT 1","ts":1705970401.0}"""
+        val entry = json.decodeFromString<QueryEntry>(jsonStr)
+        assertNull(entry.status)
+    }
+
+    // ---- hash comment tests ----
+
+    @Test
+    fun `boundQuery skips placeholder in hash comment`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t # where id = ?\nWHERE name = ?",
+            params = listOf("test")
+        )
+        assertEquals("SELECT * FROM t # where id = ?\nWHERE name = 'test'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery skips placeholder in hash comment at end of query`() {
+        val entry = QueryEntry(
+            query = "SELECT 1 # comment ?",
+            params = listOf("unused")
+        )
+        assertEquals("SELECT 1 # comment ?", entry.boundQuery)
+    }
+
+    // ---- double-dash comment spec tests ----
+
+    @Test
+    fun `boundQuery does not treat double-dash without trailing space as comment`() {
+        // MySQL/MariaDB requires whitespace after -- for it to be a line comment.
+        // "1--?" is arithmetic, not a comment.
+        val entry = QueryEntry(
+            query = "SELECT 1--?",
+            params = listOf("2")
+        )
+        assertEquals("SELECT 1--'2'", entry.boundQuery)
+    }
+
+    @Test
+    fun `boundQuery treats double-dash with tab as comment`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM t --\twhere id = ?\nWHERE name = ?",
+            params = listOf("test")
+        )
+        assertEquals("SELECT * FROM t --\twhere id = ?\nWHERE name = 'test'", entry.boundQuery)
+    }
 }

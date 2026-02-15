@@ -11,8 +11,13 @@ data class QueryEntry(
     val timestamp: Double = 0.0,
     @SerialName("k")
     val jobKey: String = "",
+    @SerialName("s")
+    val status: String? = null,
+    @SerialName("tag")
     val tag: String? = null,
+    @SerialName("params")
     val params: List<String?> = emptyList(),
+    @SerialName("trace")
     val trace: List<BacktraceFrame> = emptyList()
 ) {
     /** Whether this query has bound parameters (prepared statement) */
@@ -29,7 +34,8 @@ data class QueryEntry(
      *    (when `NO_BACKSLASH_ESCAPES` is not set)
      *  - Double-quoted string literals (`"..."`) with `""` as escaped quote
      *  - Backtick-quoted identifiers (`` `...` ``)
-     *  - Line comments (`-- ...`)
+     *  - Line comments (`-- ...` where `--` is followed by whitespace)
+     *  - Hash comments (`# ...`)
      *  - Block comments (`/* ... */`)
      *
      * Param values are wrapped in single quotes with internal backslashes
@@ -46,8 +52,22 @@ data class QueryEntry(
             while (i < query.length) {
                 val ch = query[i]
 
-                // -- line comment: copy through to end of line
-                if (ch == '-' && i + 1 < query.length && query[i + 1] == '-') {
+                // -- line comment (MySQL/MariaDB requires space/tab/newline after --)
+                if (ch == '-' && i + 1 < query.length && query[i + 1] == '-'
+                    && i + 2 < query.length && (query[i + 2] == ' ' || query[i + 2] == '\t' || query[i + 2] == '\n')) {
+                    val eol = query.indexOf('\n', i)
+                    if (eol == -1) {
+                        sb.append(query, i, query.length)
+                        i = query.length
+                    } else {
+                        sb.append(query, i, eol + 1)
+                        i = eol + 1
+                    }
+                    continue
+                }
+
+                // # line comment (MySQL/MariaDB): copy through to end of line
+                if (ch == '#') {
                     val eol = query.indexOf('\n', i)
                     if (eol == -1) {
                         sb.append(query, i, query.length)

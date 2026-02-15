@@ -61,13 +61,17 @@ MYSQLND_METHOD(profiler_conn, query)(
     const char *query,
     PROFILER_QUERY_LEN_T query_len TSRMLS_DC)
 {
-    /* Log the query if any job is active */
+    enum_func_status result;
+
+    /* Call the original method first */
+    result = orig_conn_data_methods->query(conn, query, query_len TSRMLS_CC);
+
+    /* Log the query with execution status */
     if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len);
+        profiler_log_query(query, query_len, result == PASS ? "ok" : "err");
     }
 
-    /* Call the original method */
-    return orig_conn_data_methods->query(conn, query, query_len TSRMLS_CC);
+    return result;
 }
 /* }}} */
 
@@ -87,10 +91,12 @@ MYSQLND_METHOD(profiler_conn, send_query)(
     zval *read_cb,
     zval *err_cb)
 {
+    enum_func_status result;
+    result = orig_conn_data_methods->send_query(conn, query, query_len, read_cb, err_cb);
     if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len);
+        profiler_log_query(query, query_len, result == PASS ? "ok" : "err");
     }
-    return orig_conn_data_methods->send_query(conn, query, query_len, read_cb, err_cb);
+    return result;
 }
 #elif PHP_VERSION_ID >= 70000
 /* PHP 7.0-8.0: no TSRMLS, size_t, with type param */
@@ -103,10 +109,12 @@ MYSQLND_METHOD(profiler_conn, send_query)(
     zval *read_cb,
     zval *err_cb)
 {
+    enum_func_status result;
+    result = orig_conn_data_methods->send_query(conn, query, query_len, type, read_cb, err_cb);
     if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len);
+        profiler_log_query(query, query_len, result == PASS ? "ok" : "err");
     }
-    return orig_conn_data_methods->send_query(conn, query, query_len, type, read_cb, err_cb);
+    return result;
 }
 #else
 /* PHP 5.3-5.6: simple signature (conn, query, query_len TSRMLS_DC) */
@@ -116,10 +124,12 @@ MYSQLND_METHOD(profiler_conn, send_query)(
     const char *query,
     unsigned int query_len TSRMLS_DC)
 {
+    enum_func_status result;
+    result = orig_conn_data_methods->send_query(conn, query, query_len TSRMLS_CC);
     if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len);
+        profiler_log_query(query, query_len, result == PASS ? "ok" : "err");
     }
-    return orig_conn_data_methods->send_query(conn, query, query_len TSRMLS_CC);
+    return result;
 }
 #endif
 /* }}} */
@@ -152,7 +162,7 @@ MYSQLND_METHOD(profiler_stmt, prepare)(
 #else
     /* PHP 5.x: log template at prepare time (no param support) */
     if (result == PASS && PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len);
+        profiler_log_query(query, query_len, "ok");
     }
 #endif
 
@@ -319,11 +329,19 @@ static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
 /* }}} */
 
 /* {{{ profiler_stmt_execute_hook
- * Intercepts prepared statement execution to log query with bound params. */
+ * Intercepts prepared statement execution to log query with bound params.
+ * Logging is performed after execute so the result status can be recorded.
+ * param_bind remains valid after execute (freed only on stmt dtor / rebind). */
 static enum_func_status
 MYSQLND_METHOD(profiler_stmt, execute)(
     MYSQLND_STMT * const stmt)
 {
+    enum_func_status result;
+
+    /* Call the original method first */
+    result = orig_stmt_methods->execute(stmt);
+
+    /* Log with status and params after execution */
     if (PROFILER_G(enabled) && profiler_job_is_any_active() && PROFILER_G(stmt_queries)) {
         zval *entry = zend_hash_index_find(
             PROFILER_G(stmt_queries),
@@ -332,7 +350,8 @@ MYSQLND_METHOD(profiler_stmt, execute)(
         if (entry && Z_TYPE_P(entry) == IS_STRING) {
             char *params_json = profiler_build_params_json(stmt);
             profiler_log_query_with_params(
-                Z_STRVAL_P(entry), Z_STRLEN_P(entry), params_json
+                Z_STRVAL_P(entry), Z_STRLEN_P(entry), params_json,
+                result == PASS ? "ok" : "err"
             );
             if (params_json) {
                 efree(params_json);
@@ -340,7 +359,7 @@ MYSQLND_METHOD(profiler_stmt, execute)(
         }
     }
 
-    return orig_stmt_methods->execute(stmt);
+    return result;
 }
 /* }}} */
 
