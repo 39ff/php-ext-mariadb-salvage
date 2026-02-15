@@ -109,7 +109,7 @@ class LogParserServiceTest {
                 byTable[table] = (byTable[table] ?: 0) + 1
             }
         }
-        assertEquals(3, byTable["users"])  // SELECT + UPDATE from 'users'
+        assertEquals(2, byTable["users"])  // SELECT + UPDATE from 'users'
         assertTrue((byTable["posts"] ?: 0) > 0)
         assertTrue((byTable["logs"] ?: 0) > 0)
     }
