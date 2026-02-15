@@ -66,7 +66,8 @@ class StopJobAction : AnAction() {
         object : Task.Backgroundable(project, "Stopping Profiling Job", false) {
             override fun run(indicator: ProgressIndicator) {
                 try {
-                    val process = ProcessBuilder(phpPath, cliPath, "job", "end", jobKey)
+                    val logDir = state.logDir
+                    val process = ProcessBuilder(phpPath, cliPath, "--log-dir=$logDir", "job", "end", jobKey)
                         .redirectErrorStream(true)
                         .start()
 

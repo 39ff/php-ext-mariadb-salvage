@@ -164,7 +164,8 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
         object : Task.Backgroundable(project, "Starting Profiling Session", false) {
             override fun run(indicator: ProgressIndicator) {
                 try {
-                    val process = ProcessBuilder(phpPath, cliPath, "job", "start")
+                    val logDir = service<ProfilerState>().logDir
+                    val process = ProcessBuilder(phpPath, cliPath, "--log-dir=$logDir", "job", "start")
                         .redirectErrorStream(true)
                         .start()
 
@@ -248,7 +249,8 @@ class ProfilerToolWindow(private val project: Project) : JPanel(BorderLayout()),
         object : Task.Backgroundable(project, "Stopping Profiling Session", false) {
             override fun run(indicator: ProgressIndicator) {
                 try {
-                    val process = ProcessBuilder(phpPath, cliPath, "job", "end", job.key)
+                    val logDir = service<ProfilerState>().logDir
+                    val process = ProcessBuilder(phpPath, cliPath, "--log-dir=$logDir", "job", "end", job.key)
                         .redirectErrorStream(true)
                         .start()
 
