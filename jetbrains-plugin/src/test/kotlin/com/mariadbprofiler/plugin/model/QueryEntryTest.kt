@@ -407,11 +407,12 @@ class QueryEntryTest {
 
     @Test
     fun `boundQuery treats double-dash with CRLF as comment`() {
+        // --\r\n is a comment that ends at the newline; "where id = ?" is on the
+        // next line so its ? is outside the comment and consumes the param.
         val entry = QueryEntry(
             query = "SELECT * FROM t --\r\nwhere id = ?\r\nAND name = ?",
             params = listOf("test")
         )
-        // -- followed by \r starts a comment through to \n, second ? is outside comment
-        assertEquals("SELECT * FROM t --\r\nwhere id = ?\r\nAND name = 'test'", entry.boundQuery)
+        assertEquals("SELECT * FROM t --\r\nwhere id = 'test'\r\nAND name = ?", entry.boundQuery)
     }
 }

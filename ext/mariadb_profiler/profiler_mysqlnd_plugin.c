@@ -166,8 +166,8 @@ MYSQLND_METHOD(profiler_stmt, prepare)(
     }
 #else
     /* PHP 5.x: log template at prepare time (no param support) */
-    if (result == PASS && PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len, "ok");
+    if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
+        profiler_log_query(query, query_len, result == PASS ? "ok" : "err");
     }
 #endif
 
@@ -192,12 +192,14 @@ MYSQLND_METHOD(profiler_stmt, prepare)(
 
 /* {{{ profiler_build_params_json_write_string
  * Helper: write a JSON-escaped string value into the buffer.
- * Grows the buffer as needed. Returns updated position. */
+ * Grows the buffer as needed via *buf_ptr / *buf_size_ptr.
+ * Returns updated write position. */
 static size_t profiler_build_params_json_write_string(
-    char **buf_ptr, size_t buf_size, size_t pos,
+    char **buf_ptr, size_t *buf_size_ptr, size_t pos,
     const char *str, size_t str_len)
 {
     char *buf = *buf_ptr;
+    size_t buf_size = *buf_size_ptr;
     char *escaped = profiler_log_escape_json_string(str, str_len);
     size_t esc_len = strlen(escaped);
 
@@ -205,6 +207,7 @@ static size_t profiler_build_params_json_write_string(
         buf_size = pos + esc_len + 256;
         buf = (char *)erealloc(buf, buf_size);
         *buf_ptr = buf;
+        *buf_size_ptr = buf_size;
     }
 
     buf[pos++] = '"';
@@ -321,12 +324,12 @@ static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
                  * unrecognised bind type: coerce to string */
                 if (Z_TYPE_P(zv) == IS_STRING) {
                     pos = profiler_build_params_json_write_string(
-                        &buf, buf_size, pos,
+                        &buf, &buf_size, pos,
                         Z_STRVAL_P(zv), Z_STRLEN_P(zv));
                 } else {
                     zend_string *str = zval_get_string(zv);
                     pos = profiler_build_params_json_write_string(
-                        &buf, buf_size, pos,
+                        &buf, &buf_size, pos,
                         ZSTR_VAL(str), ZSTR_LEN(str));
                     zend_string_release(str);
                 }
