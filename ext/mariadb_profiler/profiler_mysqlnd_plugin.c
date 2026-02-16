@@ -149,15 +149,20 @@ MYSQLND_METHOD(profiler_stmt, prepare)(
     result = orig_stmt_methods->prepare(stmt, query, query_len TSRMLS_CC);
 
 #if PHP_VERSION_ID >= 70000
-    /* Store query template on success - will be logged at execute() with bound params */
-    if (result == PASS && PROFILER_G(enabled) && PROFILER_G(stmt_queries)) {
-        zval zv;
-        ZVAL_STRINGL(&zv, query, query_len);
-        zend_hash_index_update(
-            PROFILER_G(stmt_queries),
-            (zend_ulong)(uintptr_t)stmt,
-            &zv
-        );
+    if (PROFILER_G(enabled)) {
+        if (result == PASS && PROFILER_G(stmt_queries)) {
+            /* Store query template on success - will be logged at execute() with bound params */
+            zval zv;
+            ZVAL_STRINGL(&zv, query, query_len);
+            zend_hash_index_update(
+                PROFILER_G(stmt_queries),
+                (zend_ulong)(uintptr_t)stmt,
+                &zv
+            );
+        } else if (result != PASS && profiler_job_is_any_active()) {
+            /* Failed prepare has no subsequent execute(); log immediately with err status */
+            profiler_log_query(query, query_len, "err");
+        }
     }
 #else
     /* PHP 5.x: log template at prepare time (no param support) */
@@ -185,8 +190,36 @@ MYSQLND_METHOD(profiler_stmt, prepare)(
 #define PROFILER_MYSQLND_PARAM_ACCESS_SAFE \
     (MYSQLND_VERSION_ID >= 70000 && MYSQLND_VERSION_ID < 80500)
 
+/* {{{ profiler_build_params_json_write_string
+ * Helper: write a JSON-escaped string value into the buffer.
+ * Grows the buffer as needed. Returns updated position. */
+static size_t profiler_build_params_json_write_string(
+    char **buf_ptr, size_t buf_size, size_t pos,
+    const char *str, size_t str_len)
+{
+    char *buf = *buf_ptr;
+    char *escaped = profiler_log_escape_json_string(str, str_len);
+    size_t esc_len = strlen(escaped);
+
+    if (pos + esc_len + 4 > buf_size) {
+        buf_size = pos + esc_len + 256;
+        buf = (char *)erealloc(buf, buf_size);
+        *buf_ptr = buf;
+    }
+
+    buf[pos++] = '"';
+    memcpy(buf + pos, escaped, esc_len);
+    pos += esc_len;
+    buf[pos++] = '"';
+    efree(escaped);
+    return pos;
+}
+
 /* {{{ profiler_build_params_json
  * Build JSON array string from stmt's bound parameter values.
+ * Formats each value according to the declared bind type (MYSQL_TYPE_*)
+ * rather than the zval's runtime type, matching the coercion mysqlnd
+ * performs before sending data to the server.
  * Returns emalloc'd string or NULL if no params. Caller must efree. */
 static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
 {
@@ -208,6 +241,7 @@ static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
 
     for (i = 0; i < data->param_count; i++) {
         zval *zv = &data->param_bind[i].zv;
+        zend_uchar bind_type = data->param_bind[i].type;
 
         if (i > 0) {
             buf[pos++] = ',';
@@ -222,95 +256,80 @@ static char *profiler_build_params_json(MYSQLND_STMT * const stmt)
         /* Dereference if reference (bind_param uses references) */
         ZVAL_DEREF(zv);
 
-        switch (Z_TYPE_P(zv)) {
-            case IS_NULL:
-                memcpy(buf + pos, "null", 4);
-                pos += 4;
-                break;
+        /* NULL zval is always serialized as JSON null regardless of bind type */
+        if (Z_TYPE_P(zv) == IS_NULL) {
+            memcpy(buf + pos, "null", 4);
+            pos += 4;
+            continue;
+        }
 
-            case IS_LONG: {
-                int written = snprintf(buf + pos, buf_size - pos, "\"%ld\"",
-                    (long)Z_LVAL_P(zv));
+        /*
+         * Format according to the declared bind type rather than zval type,
+         * matching the coercion mysqlnd performs before sending to the server.
+         *   'i' -> MYSQL_TYPE_LONG      'd' -> MYSQL_TYPE_DOUBLE
+         *   's' -> MYSQL_TYPE_VAR_STRING 'b' -> MYSQL_TYPE_LONG_BLOB
+         */
+        switch (bind_type) {
+            case MYSQL_TYPE_LONG:
+            case MYSQL_TYPE_LONGLONG: {
+                zend_long val = (Z_TYPE_P(zv) == IS_LONG)
+                    ? Z_LVAL_P(zv) : zval_get_long(zv);
+                int written = snprintf(buf + pos, buf_size - pos,
+                    "\"%ld\"", (long)val);
                 if (written < 0) {
-                    break; /* encoding error */
+                    break;
                 }
                 if ((size_t)written >= buf_size - pos) {
-                    /* Truncated – grow and retry */
                     buf_size = pos + (size_t)written + 64;
                     buf = (char *)erealloc(buf, buf_size);
-                    pos += snprintf(buf + pos, buf_size - pos, "\"%ld\"",
-                        (long)Z_LVAL_P(zv));
+                    pos += snprintf(buf + pos, buf_size - pos,
+                        "\"%ld\"", (long)val);
                 } else {
                     pos += (size_t)written;
                 }
                 break;
             }
 
-            case IS_DOUBLE: {
-                int written = snprintf(buf + pos, buf_size - pos, "\"%g\"",
-                    Z_DVAL_P(zv));
+            case MYSQL_TYPE_DOUBLE:
+            case MYSQL_TYPE_FLOAT: {
+                double val = (Z_TYPE_P(zv) == IS_DOUBLE)
+                    ? Z_DVAL_P(zv) : zval_get_double(zv);
+                int written = snprintf(buf + pos, buf_size - pos,
+                    "\"%g\"", val);
                 if (written < 0) {
-                    break; /* encoding error */
+                    break;
                 }
                 if ((size_t)written >= buf_size - pos) {
-                    /* Truncated – grow and retry */
                     buf_size = pos + (size_t)written + 64;
                     buf = (char *)erealloc(buf, buf_size);
-                    pos += snprintf(buf + pos, buf_size - pos, "\"%g\"",
-                        Z_DVAL_P(zv));
+                    pos += snprintf(buf + pos, buf_size - pos,
+                        "\"%g\"", val);
                 } else {
                     pos += (size_t)written;
                 }
                 break;
             }
 
-            case IS_TRUE:
-                memcpy(buf + pos, "\"1\"", 3);
-                pos += 3;
+            case MYSQL_TYPE_LONG_BLOB:
+                /* Blob data sent via send_long_data – log placeholder */
+                memcpy(buf + pos, "\"[BLOB]\"", 8);
+                pos += 8;
                 break;
-
-            case IS_FALSE:
-                memcpy(buf + pos, "\"\"", 2);
-                pos += 2;
-                break;
-
-            case IS_STRING: {
-                char *escaped = profiler_log_escape_json_string(
-                    Z_STRVAL_P(zv), Z_STRLEN_P(zv));
-                size_t esc_len = strlen(escaped);
-
-                /* Grow buffer for escaped string */
-                if (pos + esc_len + 4 > buf_size) {
-                    buf_size = pos + esc_len + 256;
-                    buf = (char *)erealloc(buf, buf_size);
-                }
-
-                buf[pos++] = '"';
-                memcpy(buf + pos, escaped, esc_len);
-                pos += esc_len;
-                buf[pos++] = '"';
-                efree(escaped);
-                break;
-            }
 
             default: {
-                /* Convert unknown types to string */
-                zend_string *str = zval_get_string(zv);
-                char *escaped = profiler_log_escape_json_string(
-                    ZSTR_VAL(str), ZSTR_LEN(str));
-                size_t esc_len = strlen(escaped);
-
-                if (pos + esc_len + 4 > buf_size) {
-                    buf_size = pos + esc_len + 256;
-                    buf = (char *)erealloc(buf, buf_size);
+                /* String types (MYSQL_TYPE_VAR_STRING, etc.) and any
+                 * unrecognised bind type: coerce to string */
+                if (Z_TYPE_P(zv) == IS_STRING) {
+                    pos = profiler_build_params_json_write_string(
+                        &buf, buf_size, pos,
+                        Z_STRVAL_P(zv), Z_STRLEN_P(zv));
+                } else {
+                    zend_string *str = zval_get_string(zv);
+                    pos = profiler_build_params_json_write_string(
+                        &buf, buf_size, pos,
+                        ZSTR_VAL(str), ZSTR_LEN(str));
+                    zend_string_release(str);
                 }
-
-                buf[pos++] = '"';
-                memcpy(buf + pos, escaped, esc_len);
-                pos += esc_len;
-                buf[pos++] = '"';
-                efree(escaped);
-                zend_string_release(str);
                 break;
             }
         }

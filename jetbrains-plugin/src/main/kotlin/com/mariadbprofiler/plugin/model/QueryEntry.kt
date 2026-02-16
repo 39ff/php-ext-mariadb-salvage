@@ -54,7 +54,7 @@ data class QueryEntry(
 
                 // -- line comment (MySQL/MariaDB requires space/tab/newline after --)
                 if (ch == '-' && i + 1 < query.length && query[i + 1] == '-'
-                    && i + 2 < query.length && (query[i + 2] == ' ' || query[i + 2] == '\t' || query[i + 2] == '\n')) {
+                    && i + 2 < query.length && (query[i + 2] == ' ' || query[i + 2] == '\t' || query[i + 2] == '\n' || query[i + 2] == '\r')) {
                     val eol = query.indexOf('\n', i)
                     if (eol == -1) {
                         sb.append(query, i, query.length)
