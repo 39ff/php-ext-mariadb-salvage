@@ -62,6 +62,10 @@ ZEND_BEGIN_MODULE_GLOBALS(mariadb_profiler)
     int        tag_depth;
     /* Trace settings */
     zend_long  trace_depth;         /* 0=disabled, N=capture N frames */
+#if PHP_VERSION_ID >= 70000
+    /* Prepared statement query template storage (PHP 7.0+) */
+    HashTable *stmt_queries;        /* stmt ptr -> query template string */
+#endif
 ZEND_END_MODULE_GLOBALS(mariadb_profiler)
 
 /* Globals accessor: extern declaration for use across compilation units */
@@ -95,10 +99,13 @@ void profiler_job_free_active_jobs(void);
 int  profiler_job_is_any_active(void);
 char **profiler_job_get_active_list(int *count);
 
-/* Logging */
-void profiler_log_query(const char *query, size_t query_len);
+/* Logging – status is "ok" or "err" (NULL treated as "ok") */
+void profiler_log_query(const char *query, size_t query_len, const char *status);
+void profiler_log_query_with_params(const char *query, size_t query_len,
+                                    const char *params_json, const char *status);
 void profiler_log_raw(const char *job_key, const char *query, size_t query_len,
-                      const char *tag, const char *trace_json);
+                      const char *tag, const char *trace_json,
+                      const char *params_json, const char *status);
 void profiler_log_init(void);
 void profiler_log_shutdown(void);
 

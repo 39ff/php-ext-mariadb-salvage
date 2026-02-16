@@ -179,4 +179,16 @@ typedef long zend_long;
     zend_hash_str_find((ht), (key), (key_len))
 #endif
 
+/*
+ * ---- bool type compatibility for mysqlnd stmt dtor ----
+ *
+ * PHP 8.0+: uses C99 bool
+ * PHP 7.x:  uses zend_bool (unsigned char)
+ */
+#if PHP_VERSION_ID >= 80000
+# define PROFILER_BOOL_T bool
+#else
+# define PROFILER_BOOL_T zend_bool
+#endif
+
 #endif /* PHP_MARIADB_PROFILER_COMPAT_H */

@@ -29,6 +29,21 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
     }
 
+    private val paramsArea = JTextArea().apply {
+        isEditable = false
+        font = Font("JetBrains Mono", Font.PLAIN, 12).let { f ->
+            if (f.family == "JetBrains Mono") f else Font(Font.MONOSPACED, Font.PLAIN, 12)
+        }
+        lineWrap = true
+        wrapStyleWord = true
+        border = BorderFactory.createEmptyBorder(4, 8, 4, 8)
+        foreground = JBColor(0x6A1B9A, 0xCE93D8)
+    }
+    private val paramsPanel = JPanel(BorderLayout()).apply {
+        border = BorderFactory.createTitledBorder("Bound Parameters")
+        add(JBScrollPane(paramsArea).apply { preferredSize = Dimension(0, 60) })
+    }
+
     private val tablesLabel = JBLabel()
     private val tagsLabel = JBLabel()
     private val timestampLabel = JBLabel()
@@ -87,10 +102,17 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
             add(JBScrollPane(backtracePanel).apply { preferredSize = Dimension(0, 200) })
         }
 
+        // Stack SQL + params + meta vertically, then backtrace at bottom
+        val topPanel = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            add(sqlPanel)
+            add(paramsPanel)
+            add(metaPanel)
+        }
+
         contentPanel.apply {
-            add(sqlPanel, BorderLayout.NORTH)
-            add(metaPanel, BorderLayout.CENTER)
-            add(btPanel, BorderLayout.SOUTH)
+            add(topPanel, BorderLayout.NORTH)
+            add(btPanel, BorderLayout.CENTER)
         }
 
         cardPanel.add(emptyLabel, "empty")
@@ -105,8 +127,22 @@ class QueryDetailPanel(private val project: Project) : JPanel(BorderLayout()) {
             return
         }
 
-        sqlArea.text = entry.query
+        // Show bound query (with params interpolated) if available, otherwise template
+        sqlArea.text = entry.boundQuery ?: entry.query
         sqlArea.caretPosition = 0
+
+        // Show params panel only for prepared statements with bound values
+        if (entry.hasParams) {
+            val paramLines = entry.params.mapIndexed { i, v ->
+                "  ?${i + 1} = ${v ?: "NULL"}"
+            }
+            paramsArea.text = paramLines.joinToString("\n")
+            paramsArea.caretPosition = 0
+            paramsPanel.isVisible = true
+        } else {
+            paramsPanel.isVisible = false
+        }
+
         timestampLabel.text = entry.formattedTimestamp
         tablesLabel.text = entry.tables.joinToString(", ").ifEmpty { "-" }
         tagsLabel.text = entry.tags.joinToString(", ").ifEmpty { "-" }

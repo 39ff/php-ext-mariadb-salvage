@@ -175,6 +175,11 @@ PHP_RINIT_FUNCTION(mariadb_profiler)
         profiler_ensure_log_dir(TSRMLS_C);
         /* Load active jobs at request start */
         profiler_job_refresh_active_jobs();
+#if PHP_VERSION_ID >= 70000
+        /* Initialize prepared statement query template storage */
+        ALLOC_HASHTABLE(PROFILER_G(stmt_queries));
+        zend_hash_init(PROFILER_G(stmt_queries), 16, NULL, ZVAL_PTR_DTOR, 0);
+#endif
     }
 
     return SUCCESS;
@@ -187,6 +192,14 @@ PHP_RSHUTDOWN_FUNCTION(mariadb_profiler)
     if (PROFILER_G(enabled)) {
         profiler_tag_clear_all();
         profiler_job_free_active_jobs();
+#if PHP_VERSION_ID >= 70000
+        /* Free prepared statement query template storage */
+        if (PROFILER_G(stmt_queries)) {
+            zend_hash_destroy(PROFILER_G(stmt_queries));
+            FREE_HASHTABLE(PROFILER_G(stmt_queries));
+            PROFILER_G(stmt_queries) = NULL;
+        }
+#endif
     }
     return SUCCESS;
 }
