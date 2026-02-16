@@ -191,4 +191,84 @@ typedef long zend_long;
 # define PROFILER_BOOL_T zend_bool
 #endif
 
+/*
+ * ---- Platform I/O compatibility (Windows) ----
+ *
+ * The extension uses POSIX APIs (flock, gettimeofday, localtime_r, open/read/close)
+ * that are not available on Windows. These macros and inline functions provide
+ * equivalent functionality using Win32 APIs.
+ *
+ * On Windows, php.h already includes <windows.h> and provides gettimeofday()
+ * via win32/time.h. We only need to handle the remaining POSIX-specific APIs.
+ */
+#ifdef PHP_WIN32
+# include <io.h>
+# include <direct.h>
+
+/* ssize_t is not defined in MSVC */
+typedef intptr_t profiler_ssize_t;
+
+/* POSIX I/O function mapping */
+# define profiler_open     _open
+# define profiler_read     _read
+# define profiler_close    _close
+
+/* S_ISDIR may not be defined on all MSVC versions */
+# ifndef S_ISDIR
+#  define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+# endif
+
+/* mkdir: Windows _mkdir() takes only the path (no mode parameter) */
+# define PROFILER_MKDIR(path, mode)  _mkdir(path)
+
+/* localtime_r: Windows has localtime_s with swapped argument order */
+static inline struct tm *profiler_localtime_r(const time_t *timep, struct tm *result)
+{
+    return (localtime_s(result, timep) == 0) ? result : NULL;
+}
+# define localtime_r profiler_localtime_r
+
+/* File locking: Windows uses LockFileEx/UnlockFileEx instead of flock() */
+# ifndef LOCK_SH
+#  define LOCK_SH 1
+# endif
+# ifndef LOCK_EX
+#  define LOCK_EX 2
+# endif
+# ifndef LOCK_UN
+#  define LOCK_UN 8
+# endif
+
+static inline int profiler_flock(int fd, int operation)
+{
+    HANDLE h = (HANDLE)_get_osfhandle(fd);
+    DWORD flags;
+    OVERLAPPED ov = {0};
+
+    if (h == INVALID_HANDLE_VALUE) {
+        return -1;
+    }
+
+    if (operation == LOCK_UN) {
+        return UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ov) ? 0 : -1;
+    }
+
+    flags = (operation == LOCK_EX) ? LOCKFILE_EXCLUSIVE_LOCK : 0;
+    return LockFileEx(h, flags, 0, MAXDWORD, MAXDWORD, &ov) ? 0 : -1;
+}
+# define flock  profiler_flock
+
+#else
+/* Unix/Linux/macOS */
+
+typedef ssize_t profiler_ssize_t;
+
+# define profiler_open     open
+# define profiler_read     read
+# define profiler_close    close
+
+# define PROFILER_MKDIR(path, mode)  mkdir(path, mode)
+
+#endif /* PHP_WIN32 */
+
 #endif /* PHP_MARIADB_PROFILER_COMPAT_H */

@@ -91,8 +91,8 @@ static int profiler_ensure_log_dir(TSRMLS_D)
         return FAILURE;
     }
 
-    /* Try to create directory (mode 0777, umask will apply) */
-    if (mkdir(dir, 0777) == 0) {
+    /* Try to create directory (mode 0777, umask will apply on Unix) */
+    if (PROFILER_MKDIR(dir, 0777) == 0) {
         return SUCCESS;
     }
 
@@ -101,30 +101,44 @@ static int profiler_ensure_log_dir(TSRMLS_D)
         char tmp[4096];
         char *p;
         size_t len;
+        char sep;
 
         len = snprintf(tmp, sizeof(tmp), "%s", dir);
         if (len >= sizeof(tmp)) {
             return FAILURE;
         }
 
-        /* Remove trailing slash */
-        if (tmp[len - 1] == '/') {
+#ifdef PHP_WIN32
+        sep = '\\';
+        /* Normalise forward slashes to backslashes on Windows */
+        {
+            char *s;
+            for (s = tmp; *s; s++) {
+                if (*s == '/') *s = '\\';
+            }
+        }
+#else
+        sep = '/';
+#endif
+
+        /* Remove trailing separator */
+        if (tmp[len - 1] == sep) {
             tmp[len - 1] = '\0';
         }
 
         for (p = tmp + 1; *p; p++) {
-            if (*p == '/') {
+            if (*p == sep) {
                 *p = '\0';
                 if (stat(tmp, &st) != 0) {
-                    if (mkdir(tmp, 0777) != 0 && errno != EEXIST) {
+                    if (PROFILER_MKDIR(tmp, 0777) != 0 && errno != EEXIST) {
                         return FAILURE;
                     }
                 }
-                *p = '/';
+                *p = sep;
             }
         }
 
-        if (mkdir(tmp, 0777) != 0 && errno != EEXIST) {
+        if (PROFILER_MKDIR(tmp, 0777) != 0 && errno != EEXIST) {
             php_error_docref(NULL TSRMLS_CC, E_WARNING,
                 "mariadb_profiler: failed to create log_dir '%s': %s",
                 dir, strerror(errno));

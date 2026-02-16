@@ -18,8 +18,10 @@
 #include "profiler_tag.h"
 #include "profiler_trace.h"
 
-#include <sys/file.h>
-#include <sys/time.h>
+#ifndef PHP_WIN32
+# include <sys/file.h>
+# include <sys/time.h>
+#endif
 #include <time.h>
 
 /* {{{ profiler_log_escape_json_string
