@@ -261,6 +261,7 @@ static inline int profiler_flock(int fd, int operation)
 #else
 /* Unix/Linux/macOS */
 
+# include <unistd.h>
 typedef ssize_t profiler_ssize_t;
 
 # define profiler_open     open
