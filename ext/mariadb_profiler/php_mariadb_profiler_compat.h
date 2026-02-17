@@ -235,6 +235,9 @@ static inline struct tm *profiler_localtime_r(const time_t *timep, struct tm *re
 # ifndef LOCK_EX
 #  define LOCK_EX 2
 # endif
+# ifndef LOCK_NB
+#  define LOCK_NB 4
+# endif
 # ifndef LOCK_UN
 #  define LOCK_UN 8
 # endif
@@ -242,18 +245,23 @@ static inline struct tm *profiler_localtime_r(const time_t *timep, struct tm *re
 static inline int profiler_flock(int fd, int operation)
 {
     HANDLE h = (HANDLE)_get_osfhandle(fd);
-    DWORD flags;
+    DWORD flags = 0;
     OVERLAPPED ov = {0};
 
     if (h == INVALID_HANDLE_VALUE) {
         return -1;
     }
 
-    if (operation == LOCK_UN) {
+    if (operation & LOCK_UN) {
         return UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ov) ? 0 : -1;
     }
 
-    flags = (operation == LOCK_EX) ? LOCKFILE_EXCLUSIVE_LOCK : 0;
+    if (operation & LOCK_EX) {
+        flags |= LOCKFILE_EXCLUSIVE_LOCK;
+    }
+    if (operation & LOCK_NB) {
+        flags |= LOCKFILE_FAIL_IMMEDIATELY;
+    }
     return LockFileEx(h, flags, 0, MAXDWORD, MAXDWORD, &ov) ? 0 : -1;
 }
 # define flock  profiler_flock

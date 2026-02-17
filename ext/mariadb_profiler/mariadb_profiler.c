@@ -126,7 +126,30 @@ static int profiler_ensure_log_dir(TSRMLS_D)
             tmp[len - 1] = '\0';
         }
 
-        for (p = tmp + 1; *p; p++) {
+#ifdef PHP_WIN32
+        /* Skip drive prefix (e.g. "C:\") or UNC prefix (e.g. "\\server\share\") */
+        p = tmp;
+        if (((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z'))
+            && p[1] == ':' && p[2] == sep) {
+            /* Drive letter path: start after "C:\" */
+            p += 3;
+        } else if (p[0] == sep && p[1] == sep) {
+            /* UNC path: skip past "\\server\share\" */
+            p += 2;
+            /* Skip server name */
+            while (*p && *p != sep) p++;
+            if (*p == sep) p++;
+            /* Skip share name */
+            while (*p && *p != sep) p++;
+            if (*p == sep) p++;
+        } else {
+            p++;
+        }
+#else
+        p = tmp + 1;
+#endif
+
+        for (; *p; p++) {
             if (*p == sep) {
                 *p = '\0';
                 if (stat(tmp, &st) != 0) {
