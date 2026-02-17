@@ -1,39 +1,39 @@
 # MariaDB Profiler for PHP
 
-PHP拡張モジュールとして動作するMariaDB/MySQLクエリプロファイラです。PHPの`mysqlnd`ドライバにフックし、実行される全SQLクエリをインターセプトして記録・分析します。
+A MariaDB/MySQL query profiler that runs as a PHP extension. It hooks into PHP's `mysqlnd` driver to intercept, record, and analyze all executed SQL queries.
 
-PDO、mysqli、Laravel Eloquentなど、mysqlndを利用するすべてのデータベースアクセス方法に対応しています。
+Works with any database access method that uses mysqlnd, including PDO, mysqli, and Laravel Eloquent.
 
-## 構成
+## Components
 
-| コンポーネント | 概要 |
+| Component | Description |
 |---|---|
-| `ext/mariadb_profiler/` | PHP拡張モジュール (C言語) |
-| `cli/` | CLIプロファイラ管理ツール (PHP) |
-| `demo/` | Docker環境のWebデモ (Laravel + WebSocket) |
-| `jetbrains-plugin/` | JetBrains IDEプラグイン (Kotlin) |
+| `ext/mariadb_profiler/` | PHP extension (C) |
+| `cli/` | CLI profiler management tool (PHP) |
+| `demo/` | Docker-based web demo (Laravel + WebSocket) |
+| `jetbrains-plugin/` | JetBrains IDE plugin (Kotlin) |
 
-## 機能
+## Features
 
-- **クエリインターセプト** — mysqlndレベルで全SQLクエリをキャプチャ
-- **コンテキストタグ** — スタック型タグでクエリをビジネスロジック単位にグループ化
-- **PHPバックトレース** — 任意の深さでコールスタックを記録
-- **プリペアドステートメント対応** — バインドパラメータも記録 (PHP 7.0+)
-- **SQL解析** — テーブル名・カラム名の自動抽出
-- **ジョブ管理** — 複数プロファイリングセッションの同時実行・親子関係管理
-- **クロスプラットフォーム** — Linux / macOS / Windows対応
+- **Query interception** — Captures all SQL queries at the mysqlnd level
+- **Context tags** — Stack-based tags to group queries by business logic
+- **PHP backtrace** — Records call stacks at configurable depth
+- **Prepared statement support** — Logs bound parameters (PHP 7.0+)
+- **SQL analysis** — Automatic extraction of table and column names
+- **Job management** — Concurrent profiling sessions with parent-child relationships
+- **Cross-platform** — Linux / macOS / Windows
 
-## 要件
+## Requirements
 
-| コンポーネント | 要件 |
+| Component | Requirements |
 |---|---|
-| PHP拡張 | PHP 5.3 〜 8.4+、mysqlnd |
-| CLIツール | PHP 5.3+、Composer |
-| デモ | Docker、Docker Compose |
+| Extension | PHP 5.3 – 8.4+, mysqlnd |
+| CLI tool | PHP 5.3+, Composer |
+| Demo | Docker, Docker Compose |
 
-## インストール
+## Installation
 
-### PHP拡張のビルド
+### Building the Extension
 
 ```bash
 cd ext/mariadb_profiler
@@ -43,7 +43,7 @@ make
 sudo make install
 ```
 
-php.iniに以下を追加:
+Add the following to php.ini:
 
 ```ini
 extension=mariadb_profiler.so
@@ -51,90 +51,90 @@ mariadb_profiler.enabled=1
 mariadb_profiler.log_dir=/var/log/mariadb_profiler
 ```
 
-### CLIツール
+### CLI Tool
 
 ```bash
 composer install
 ```
 
-## 設定 (php.ini)
+## Configuration (php.ini)
 
 ```ini
-mariadb_profiler.enabled = 1            ; 拡張の有効化
-mariadb_profiler.log_dir = /tmp/mariadb_profiler  ; ログ出力先
-mariadb_profiler.raw_log = 1            ; テキスト形式のログ出力
-mariadb_profiler.job_check_interval = 1 ; jobs.jsonのチェック間隔 (秒)
-mariadb_profiler.trace_depth = 0        ; バックトレースの深さ (0=無効)
+mariadb_profiler.enabled = 1            ; Enable the extension
+mariadb_profiler.log_dir = /tmp/mariadb_profiler  ; Log output directory
+mariadb_profiler.raw_log = 1            ; Write raw text logs
+mariadb_profiler.job_check_interval = 1 ; Interval to check jobs.json (seconds)
+mariadb_profiler.trace_depth = 0        ; Backtrace depth (0 = disabled)
 ```
 
-## 使い方
+## Usage
 
-### プロファイリングジョブの操作
+### Managing Profiling Jobs
 
 ```bash
-# ジョブの開始
+# Start a job
 php cli/mariadb_profiler.php job start [<key>]
 
-# ジョブの終了
+# End a job
 php cli/mariadb_profiler.php job end <key>
 
-# ジョブ一覧
+# List jobs
 php cli/mariadb_profiler.php job list
 
-# 解析済みクエリの表示
+# Show parsed queries
 php cli/mariadb_profiler.php job show <key> [--tag=<tag>]
 
-# 生ログの表示
+# Show raw log
 php cli/mariadb_profiler.php job raw <key>
 
-# JSON形式でエクスポート
+# Export as JSON
 php cli/mariadb_profiler.php job export <key>
 
-# タグ別サマリー
+# Show tag summary
 php cli/mariadb_profiler.php job tags <key>
 
-# 呼び出し元サマリー
+# Show caller summary
 php cli/mariadb_profiler.php job callers <key>
 
-# 完了済みジョブの削除
+# Purge completed jobs
 php cli/mariadb_profiler.php job purge
 ```
 
-### PHPコード内でのタグ付け
+### Tagging Queries in PHP
 
 ```php
-// タグをプッシュ
+// Push a tag
 mariadb_profiler_tag('checkout_flow');
 
-// ここで実行されるクエリに 'checkout_flow' タグが付与される
+// Queries executed here are tagged with 'checkout_flow'
 $db->query('SELECT * FROM orders WHERE user_id = ?');
 
-// 現在のタグを取得
+// Get the current tag
 $tag = mariadb_profiler_get_tag(); // 'checkout_flow'
 
-// タグをポップ
+// Pop the tag
 mariadb_profiler_untag();
 ```
 
-### デモ環境
+### Demo
 
 ```bash
 cd demo
 docker compose up --build
-# http://localhost:8080 にアクセス
+# Open http://localhost:8080
 ```
 
-## PHP関数リファレンス
+## PHP Function Reference
 
-| 関数 | 説明 |
+| Function | Description |
 |---|---|
-| `mariadb_profiler_tag(string $tag): void` | コンテキストタグをスタックにプッシュ |
-| `mariadb_profiler_untag(?string $tag = null): ?string` | タグをポップ (指定タグまで巻き戻し可) |
-| `mariadb_profiler_get_tag(): ?string` | 現在のタグを取得 (未設定時はnull) |
+| `mariadb_profiler_tag(string $tag): void` | Push a context tag onto the stack |
+| `mariadb_profiler_untag(?string $tag = null): ?string` | Pop a tag (optionally unwind to a specific tag) |
+| `mariadb_profiler_get_tag(): ?string` | Get the current tag (null if none) |
 
-## ログ形式
+## Log Formats
 
-ジョブごとに2種類のファイルが生成されます:
+Two files are generated per job:
 
-- `{job_key}.raw.log` — 1行1クエリのテキスト形式 (タイムスタンプ、ステータス、タグ、トレース付き)
-- `{job_key}.jsonl` — テーブル名・カラム名を含む解析済みJSON形式
+- `{job_key}.raw.log` — One query per line in text format (with timestamp, status, tag, and trace)
+- `{job_key}.jsonl` — Parsed JSON format with extracted table and column names
