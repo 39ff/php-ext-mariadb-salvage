@@ -17,8 +17,13 @@ on:
       - '.github/workflows/demo-e2e.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   demo-e2e:
+    if: github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'no_run')
     name: Demo E2E (Docker + Selenium)
     runs-on: ubuntu-latest
     timeout-minutes: 20
