@@ -14,6 +14,7 @@ on:
 
 jobs:
   build-windows:
+    if: github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'no_run')
     name: Windows - PHP ${{ matrix.php }} ${{ matrix.ts }} ${{ matrix.arch }}
     runs-on: windows-${{ matrix.os }}
     defaults:

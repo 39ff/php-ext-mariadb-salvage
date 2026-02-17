@@ -8,6 +8,7 @@ on:
 
 jobs:
   test-cli:
+    if: github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'no_run')
     name: CLI Tests (PHP ${{ matrix.php-version }})
     runs-on: ubuntu-latest
     strategy:
@@ -42,6 +43,7 @@ jobs:
         run: php tests/test_integration.php
 
   build-extension:
+    if: github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'no_run')
     name: Build Extension (PHP ${{ matrix.php-version }})
     runs-on: ubuntu-latest
     strategy:
