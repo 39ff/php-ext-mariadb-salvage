@@ -14,7 +14,9 @@
 #include "php_mariadb_profiler.h"
 #include "profiler_job.h"
 
-#include <sys/file.h>
+#ifndef PHP_WIN32
+# include <sys/file.h>
+#endif
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h>
@@ -144,7 +146,7 @@ int profiler_job_refresh_active_jobs(void)
     int fd;
     struct stat st;
     char *buf = NULL;
-    ssize_t bytes_read;
+    profiler_ssize_t bytes_read;
     TSRMLS_FETCH();
 
     /* Free previous state */
@@ -152,7 +154,7 @@ int profiler_job_refresh_active_jobs(void)
 
     jobs_path = profiler_job_get_jobs_path();
 
-    fd = open(jobs_path, O_RDONLY);
+    fd = profiler_open(jobs_path, O_RDONLY);
     efree(jobs_path);
 
     if (fd < 0) {
@@ -163,23 +165,23 @@ int profiler_job_refresh_active_jobs(void)
 
     /* Shared lock for reading */
     if (flock(fd, LOCK_SH) != 0) {
-        close(fd);
+        profiler_close(fd);
         return FAILURE;
     }
 
     if (fstat(fd, &st) != 0 || st.st_size == 0) {
         flock(fd, LOCK_UN);
-        close(fd);
+        profiler_close(fd);
         PROFILER_G(last_job_check) = time(NULL);
         return SUCCESS;
     }
 
     buf = (char *)emalloc(st.st_size + 1);
-    bytes_read = read(fd, buf, st.st_size);
+    bytes_read = (profiler_ssize_t)profiler_read(fd, buf, st.st_size);
     buf[bytes_read > 0 ? bytes_read : 0] = '\0';
 
     flock(fd, LOCK_UN);
-    close(fd);
+    profiler_close(fd);
 
     /* Parse the JSON to get active job keys */
     profiler_job_parse_active_jobs(buf, &PROFILER_G(active_jobs), &PROFILER_G(active_job_count));

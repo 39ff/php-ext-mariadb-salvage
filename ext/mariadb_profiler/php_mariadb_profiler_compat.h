@@ -191,4 +191,109 @@ typedef long zend_long;
 # define PROFILER_BOOL_T zend_bool
 #endif
 
+/*
+ * ---- Platform I/O compatibility (Windows) ----
+ *
+ * The extension uses POSIX APIs (flock, gettimeofday, localtime_r, open/read/close)
+ * that are not available on Windows. These macros and inline functions provide
+ * equivalent functionality using Win32 APIs.
+ *
+ * On Windows, php.h already includes <windows.h> and provides gettimeofday()
+ * via win32/time.h. We only need to handle the remaining POSIX-specific APIs.
+ */
+#ifdef PHP_WIN32
+# include <io.h>
+# include <direct.h>
+
+/* ssize_t is not defined in MSVC */
+typedef intptr_t profiler_ssize_t;
+
+/* POSIX I/O function mapping */
+# define profiler_open     _open
+# define profiler_read     _read
+# define profiler_close    _close
+
+/* S_ISDIR may not be defined on all MSVC versions */
+# ifndef S_ISDIR
+#  define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+# endif
+
+/* mkdir: Windows _mkdir() takes only the path (no mode parameter) */
+# define PROFILER_MKDIR(path, mode)  _mkdir(path)
+
+/* localtime_r: Windows has localtime_s with swapped argument order */
+static inline struct tm *profiler_localtime_r(const time_t *timep, struct tm *result)
+{
+    return (localtime_s(result, timep) == 0) ? result : NULL;
+}
+# define localtime_r profiler_localtime_r
+
+/* File locking: Windows uses LockFileEx/UnlockFileEx instead of flock() */
+# ifndef LOCK_SH
+#  define LOCK_SH 1
+# endif
+# ifndef LOCK_EX
+#  define LOCK_EX 2
+# endif
+# ifndef LOCK_NB
+#  define LOCK_NB 4
+# endif
+# ifndef LOCK_UN
+#  define LOCK_UN 8
+# endif
+
+static inline int profiler_flock(int fd, int operation)
+{
+    HANDLE h = (HANDLE)_get_osfhandle(fd);
+    DWORD flags = 0;
+    OVERLAPPED ov = {0};
+
+    if (h == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
+    }
+
+    if (operation & LOCK_UN) {
+        if (UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ov)) {
+            return 0;
+        }
+        _dosmaperr(GetLastError());
+        return -1;
+    }
+
+    if (operation & LOCK_EX) {
+        flags |= LOCKFILE_EXCLUSIVE_LOCK;
+    }
+    if (operation & LOCK_NB) {
+        flags |= LOCKFILE_FAIL_IMMEDIATELY;
+    }
+    if (LockFileEx(h, flags, 0, MAXDWORD, MAXDWORD, &ov)) {
+        return 0;
+    }
+    {
+        DWORD lasterr = GetLastError();
+        if ((operation & LOCK_NB) && lasterr == ERROR_LOCK_VIOLATION) {
+            errno = EWOULDBLOCK;
+        } else {
+            _dosmaperr(lasterr);
+        }
+    }
+    return -1;
+}
+# define flock  profiler_flock
+
+#else
+/* Unix/Linux/macOS */
+
+# include <unistd.h>
+typedef ssize_t profiler_ssize_t;
+
+# define profiler_open     open
+# define profiler_read     read
+# define profiler_close    close
+
+# define PROFILER_MKDIR(path, mode)  mkdir(path, mode)
+
+#endif /* PHP_WIN32 */
+
 #endif /* PHP_MARIADB_PROFILER_COMPAT_H */

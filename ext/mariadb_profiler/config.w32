@@ -1,0 +1,11 @@
+// config.w32 for extension mariadb_profiler
+
+ARG_ENABLE('mariadb_profiler', 'MariaDB Query Profiler support', 'no');
+
+if (PHP_MARIADB_PROFILER != 'no') {
+    EXTENSION('mariadb_profiler',
+        'mariadb_profiler.c profiler_mysqlnd_plugin.c profiler_job.c profiler_log.c profiler_tag.c profiler_trace.c',
+        PHP_MARIADB_PROFILER_SHARED,
+        '/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1');
+    ADD_EXTENSION_DEP('mariadb_profiler', 'mysqlnd', true);
+}

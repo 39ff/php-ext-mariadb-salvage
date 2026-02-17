@@ -1,0 +1,180 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Linux .so builds
+  # ---------------------------------------------------------------------------
+  build-linux:
+    name: Linux - PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mysqlnd
+          tools: phpize
+          ini-values: error_reporting=E_ALL
+
+      - name: Build extension
+        working-directory: ext/mariadb_profiler
+        run: |
+          phpize
+          ./configure --enable-mariadb_profiler
+          make -j$(nproc)
+
+      - name: Verify extension is loadable
+        working-directory: ext/mariadb_profiler
+        run: |
+          php -d "extension=$(pwd)/modules/mariadb_profiler.so" -m | grep mariadb_profiler
+
+      - name: Package artifact
+        run: |
+          mkdir -p dist
+          cp ext/mariadb_profiler/modules/mariadb_profiler.so \
+            "dist/mariadb_profiler-php${{ matrix.php }}-linux-x86_64.so"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mariadb_profiler-php${{ matrix.php }}-linux-x86_64
+          path: dist/*.so
+
+  # ---------------------------------------------------------------------------
+  # Windows .dll builds
+  # ---------------------------------------------------------------------------
+  build-windows:
+    name: Windows - PHP ${{ matrix.php }} ${{ matrix.ts }} ${{ matrix.arch }}
+    runs-on: windows-${{ matrix.os }}
+    defaults:
+      run:
+        shell: cmd
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+        arch: [x64]
+        ts: [nts, ts]
+        os: ['2022']
+        include:
+          # PHP 7.4-8.3 use VS16, PHP 8.4 uses VS17.
+          # windows-2022 runners have both toolsets.
+          - php: '7.4'
+            vs: vs16
+          - php: '8.0'
+            vs: vs16
+          - php: '8.1'
+            vs: vs16
+          - php: '8.2'
+            vs: vs16
+          - php: '8.3'
+            vs: vs16
+          - php: '8.4'
+            vs: vs17
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP SDK
+        id: setup
+        uses: php/setup-php-sdk@v0.12
+        with:
+          version: ${{ matrix.php }}
+          arch: ${{ matrix.arch }}
+          ts: ${{ matrix.ts }}
+
+      - name: Enable MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+          toolset: ${{ steps.setup.outputs.toolset }}
+
+      - name: phpize
+        working-directory: ext\mariadb_profiler
+        run: phpize
+
+      - name: configure
+        working-directory: ext\mariadb_profiler
+        run: configure --enable-mariadb_profiler --with-prefix=%INSTALL_DIR%
+
+      - name: nmake
+        working-directory: ext\mariadb_profiler
+        run: nmake
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          $ts = "${{ matrix.ts }}"
+          $arch = "${{ matrix.arch }}"
+          $phpVer = "${{ matrix.php }}"
+
+          # Find the built DLL
+          $dll = Get-ChildItem -Path ext\mariadb_profiler -Recurse -Filter "php_mariadb_profiler.dll" |
+                 Select-Object -First 1
+          if (-not $dll) {
+            Write-Error "php_mariadb_profiler.dll not found"
+            exit 1
+          }
+          Write-Host "Found DLL: $($dll.FullName)"
+
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $name = "php_mariadb_profiler-php${phpVer}-${ts}-${arch}"
+          Copy-Item $dll.FullName "dist\${name}.dll"
+          Write-Host "Packaged as: dist\${name}.dll"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: php_mariadb_profiler-php${{ matrix.php }}-${{ matrix.ts }}-${{ matrix.arch }}
+          path: dist\*.dll
+
+  # ---------------------------------------------------------------------------
+  # Create GitHub Release
+  # ---------------------------------------------------------------------------
+  release:
+    name: Create Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect release assets
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.so" -o -name "*.dll" \) -exec cp {} release/ \;
+          echo "=== Release assets ==="
+          ls -lh release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          name: ${{ github.event.inputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: release/*
