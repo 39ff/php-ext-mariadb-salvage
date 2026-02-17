@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: ['**']
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-cli:
     if: github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'no_run')

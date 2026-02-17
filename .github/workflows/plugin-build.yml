@@ -12,6 +12,10 @@ on:
       - 'jetbrains-plugin/**'
       - '.github/workflows/plugin-build.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     if: github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'no_run')

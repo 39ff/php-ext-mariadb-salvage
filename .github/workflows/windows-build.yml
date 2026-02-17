@@ -12,6 +12,10 @@ on:
       - 'ext/**'
       - '.github/workflows/windows-build.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-windows:
     if: github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'no_run')
