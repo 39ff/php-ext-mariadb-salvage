@@ -242,6 +242,27 @@ static inline struct tm *profiler_localtime_r(const time_t *timep, struct tm *re
 #  define LOCK_UN 8
 # endif
 
+/*
+ * Map a Windows error code to errno.
+ * PHP's internal _dosmaperr() is not exported for use by extensions,
+ * so we provide our own minimal mapping for the error codes we handle.
+ */
+static inline void profiler_dosmaperr(unsigned long winerr)
+{
+    switch (winerr) {
+        case ERROR_ACCESS_DENIED:       errno = EACCES; break;
+        case ERROR_INVALID_HANDLE:      errno = EBADF;  break;
+        case ERROR_NOT_ENOUGH_MEMORY:   errno = ENOMEM; break;
+        case ERROR_LOCK_VIOLATION:      errno = EACCES; break;
+        case ERROR_SHARING_VIOLATION:   errno = EACCES; break;
+        case ERROR_FILE_NOT_FOUND:      errno = ENOENT; break;
+        case ERROR_PATH_NOT_FOUND:      errno = ENOENT; break;
+        case ERROR_ALREADY_EXISTS:      errno = EEXIST; break;
+        case ERROR_FILE_EXISTS:         errno = EEXIST; break;
+        default:                        errno = EINVAL; break;
+    }
+}
+
 static inline int profiler_flock(int fd, int operation)
 {
     HANDLE h = (HANDLE)_get_osfhandle(fd);
@@ -257,7 +278,7 @@ static inline int profiler_flock(int fd, int operation)
         if (UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ov)) {
             return 0;
         }
-        _dosmaperr(GetLastError());
+        profiler_dosmaperr(GetLastError());
         return -1;
     }
 
@@ -275,7 +296,7 @@ static inline int profiler_flock(int fd, int operation)
         if ((operation & LOCK_NB) && lasterr == ERROR_LOCK_VIOLATION) {
             errno = EWOULDBLOCK;
         } else {
-            _dosmaperr(lasterr);
+            profiler_dosmaperr(lasterr);
         }
     }
     return -1;
