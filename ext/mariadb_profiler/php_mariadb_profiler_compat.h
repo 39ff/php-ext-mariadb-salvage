@@ -249,11 +249,16 @@ static inline int profiler_flock(int fd, int operation)
     OVERLAPPED ov = {0};
 
     if (h == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
         return -1;
     }
 
     if (operation & LOCK_UN) {
-        return UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ov) ? 0 : -1;
+        if (UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ov)) {
+            return 0;
+        }
+        _dosmaperr(GetLastError());
+        return -1;
     }
 
     if (operation & LOCK_EX) {
@@ -262,7 +267,18 @@ static inline int profiler_flock(int fd, int operation)
     if (operation & LOCK_NB) {
         flags |= LOCKFILE_FAIL_IMMEDIATELY;
     }
-    return LockFileEx(h, flags, 0, MAXDWORD, MAXDWORD, &ov) ? 0 : -1;
+    if (LockFileEx(h, flags, 0, MAXDWORD, MAXDWORD, &ov)) {
+        return 0;
+    }
+    {
+        DWORD lasterr = GetLastError();
+        if ((operation & LOCK_NB) && lasterr == ERROR_LOCK_VIOLATION) {
+            errno = EWOULDBLOCK;
+        } else {
+            _dosmaperr(lasterr);
+        }
+    }
+    return -1;
 }
 # define flock  profiler_flock
 
