@@ -4,6 +4,13 @@ A MariaDB/MySQL query profiler that runs as a PHP extension. It hooks into PHP's
 
 Works with any database access method that uses mysqlnd, including PDO, mysqli, and Laravel Eloquent.
 
+## IntelliJ Plugin Ready
+<img width="4012" height="2800" alt="ss0" src="https://github.com/user-attachments/assets/a38dbc5f-69ee-4f48-9aa1-e3fb0eb07de8" /><BR>
+<img width="3996" height="2436" alt="ss1" src="https://github.com/user-attachments/assets/460b75a9-996e-4c20-8e6f-818b4550f5d6" /><BR>
+<img width="3996" height="2436" alt="ss2" src="https://github.com/user-attachments/assets/78388037-728d-477b-bfba-1c3f75e0e1b0" />
+
+
+
 ## Components
 
 | Component | Description |
