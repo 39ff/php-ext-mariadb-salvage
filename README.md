@@ -30,6 +30,40 @@ Works with any database access method that uses mysqlnd, including PDO, mysqli, 
 - **Job management** — Concurrent profiling sessions with parent-child relationships
 - **Cross-platform** — Linux / macOS / Windows
 
+## Comparison with Similar Tools
+
+This project sits between application performance monitoring (APM) tools and DB log analyzers.
+
+| Category | Representative Tools | Strengths | Differences from this project |
+|---|---|---|---|
+| PHP APM / Profiler | Tideways, Blackfire, New Relic, Datadog APM | End-to-end tracing, rich dashboards, broad performance visibility | Usually SaaS-centric or full-stack focused; not specialized for local mysqlnd-level SQL capture with per-job CLI workflow |
+| DB Log Analysis | Percona Toolkit (`pt-query-digest`), MariaDB/MySQL slow query log analysis | Strong query aggregation and optimization insights | Relies on DB-side logs; does not natively include PHP call stacks or in-app context tags |
+| mysqlnd Hooking (low-level) | mysqlnd userland/handler approaches (e.g. mysqlnd_uh-style extensions) | Flexible low-level interception in mysqlnd layer | Often framework/tooling primitives; not an integrated profiler workflow with tagging + job lifecycle + JSONL export |
+
+### Why this project is different
+
+- Captures SQL directly at PHP `mysqlnd` layer used by PDO / mysqli / Eloquent
+- Adds optional PHP backtrace context to each query
+- Supports explicit business-context tagging via `mariadb_profiler_tag()` stack
+- Uses job-oriented CLI operations (`start`, `end`, `show`, `export`, `tags`, `callers`)
+- Can be used fully locally without external SaaS dependencies
+
+## When You Should Use This Project
+
+Use **MariaDB Profiler for PHP** when one or more of the following apply:
+
+1. You need SQL-level visibility with **PHP call-site context** (which file/function triggered the query).
+2. You want to profile only a specific workflow/request window using **start/end job control**.
+3. You need to group queries by business flow (checkout, import, batch, etc.) using **tag stack APIs**.
+4. You want **self-hosted/local-first** profiling without sending telemetry to external services.
+5. You need logs that are easy to post-process (`raw.log` + structured `jsonl`) in CI or custom tooling.
+
+### Prefer alternatives when...
+
+- You need broad distributed tracing across many services out of the box → prefer APM tools.
+- You only need DB-wide slow query aggregation from server logs → prefer `pt-query-digest` style workflows.
+- You mainly need CPU/memory/function-level profiling beyond SQL behavior → prefer general PHP profilers.
+
 ## Requirements
 
 | Component | Requirements |
