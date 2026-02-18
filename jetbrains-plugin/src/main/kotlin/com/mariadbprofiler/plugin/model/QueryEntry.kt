@@ -174,7 +174,7 @@ data class QueryEntry(
 
     val shortSql: String
         get() {
-            val oneLine = query.replace(Regex("\\s+"), " ").trim()
+            val oneLine = (boundQuery ?: query).replace(Regex("\\s+"), " ").trim()
             return if (oneLine.length > 80) oneLine.take(77) + "..." else oneLine
         }
 

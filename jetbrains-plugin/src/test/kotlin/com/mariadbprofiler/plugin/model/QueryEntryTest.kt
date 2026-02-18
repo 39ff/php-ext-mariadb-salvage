@@ -70,6 +70,32 @@ class QueryEntryTest {
         assertEquals("SELECT * FROM users", entry.shortSql)
     }
 
+    @Test
+    fun `short SQL shows bound values instead of placeholders`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM users WHERE id = ?",
+            params = listOf("42")
+        )
+        assertEquals("SELECT * FROM users WHERE id = '42'", entry.shortSql)
+    }
+
+    @Test
+    fun `short SQL shows bound values and truncates long bound query`() {
+        val entry = QueryEntry(
+            query = "SELECT * FROM users WHERE name = ? AND email = ? AND status = ?",
+            params = listOf("John", "john@example.com", "active")
+        )
+        assertTrue(entry.shortSql.length <= 80)
+        assertTrue(entry.shortSql.endsWith("..."))
+        assertTrue(entry.shortSql.contains("'John'"))
+    }
+
+    @Test
+    fun `short SQL falls back to query when no params`() {
+        val entry = QueryEntry(query = "SELECT * FROM users WHERE id = ?")
+        assertEquals("SELECT * FROM users WHERE id = ?", entry.shortSql)
+    }
+
     // ---- boundQuery tests ----
 
     @Test

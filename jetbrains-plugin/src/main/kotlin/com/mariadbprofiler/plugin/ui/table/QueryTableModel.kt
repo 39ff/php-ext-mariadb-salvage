@@ -99,6 +99,7 @@ class QueryTableModel : AbstractTableModel() {
             val matchesType = typeFilter == null || entry.queryType == typeFilter
             val matchesText = textFilter.isEmpty() ||
                     entry.query.lowercase().contains(textFilter) ||
+                    (entry.boundQuery?.lowercase()?.contains(textFilter) == true) ||
                     entry.tags.any { it.lowercase().contains(textFilter) } ||
                     getFrameFile(entry).lowercase().contains(textFilter) ||
                     getFrameFunction(entry).lowercase().contains(textFilter)
