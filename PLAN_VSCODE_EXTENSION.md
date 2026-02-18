@@ -6,23 +6,26 @@
 
 既存の JetBrains Plugin (`jetbrains-plugin/`) と同等の機能を VSCode で実現し、PhpStorm 以外の開発環境でもプロファイリングデータを活用可能にする。
 
+**UI 方針: Webview を使用せず、VSCode ネイティブ API のみで構成する。** 軽量・高速・テーマ完全統合を優先する。
+
 ---
 
 ## JetBrains Plugin との機能対応表
 
 | 機能 | JetBrains Plugin | VSCode Extension |
 |------|------------------|------------------|
-| クエリログビューア | Swing JTable (QueryLogPanel) | Webview (React/Preact テーブル) |
-| クエリ詳細表示 | Swing JTextArea + HTML (QueryDetailPanel) | Webview (シンタックスハイライト付き SQL 表示) |
-| ジョブマネージャ | Swing JList (JobListPanel) | TreeView (Native VSCode API) |
-| バックトレースナビゲーション | OpenFileDescriptor (BacktracePanel) | `vscode.workspace.openTextDocument` + `showTextDocument` |
-| リアルタイム監視 | Timer + FileWatcher (LiveTailPanel) | `fs.watch` / `vscode.workspace.FileSystemWatcher` |
-| 統計ダッシュボード | Graphics2D バーチャート (StatisticsPanel) | Webview (CSS/SVG バーチャート) |
+| クエリログビューア | Swing JTable (QueryLogPanel) | **TreeView** (クエリ一覧、展開で詳細表示) |
+| クエリ詳細表示 | Swing JTextArea + HTML (QueryDetailPanel) | **Virtual Document** (`.sql` として開き、シンタックスハイライト自動適用) |
+| ジョブマネージャ | Swing JList (JobListPanel) | **TreeView** (Native VSCode API) |
+| バックトレースナビゲーション | OpenFileDescriptor (BacktracePanel) | TreeView 子要素 + `vscode.workspace.openTextDocument` |
+| リアルタイム監視 | Timer + FileWatcher (LiveTailPanel) | **OutputChannel** (`vscode.window.createOutputChannel`) |
+| 統計ダッシュボード | Graphics2D バーチャート (StatisticsPanel) | **TreeView** (Unicode バーチャート `████`) |
 | 設定 | IntelliJ Configurable (ProfilerConfigurable) | `contributes.configuration` (VSCode Settings) |
 | IDE アクション | AnAction (Start/Stop/Open) | `contributes.commands` + コマンドパレット |
 | フレームリゾルバ | Groovy スクリプト (FrameResolverService) | JavaScript スクリプト (`vm` モジュール) |
-| エラーログ | ErrorLogPanel | OutputChannel (`vscode.window.createOutputChannel`) |
+| エラーログ | ErrorLogPanel | **OutputChannel** (`vscode.window.createOutputChannel`) |
 | パスマッピング | ProfilerState テキスト設定 | VSCode Settings (JSON 形式) |
+| フィルタ・検索 | テーブル上のフィルタバー | **QuickPick** (コマンドパレット) + TreeView `view/title` メニュー |
 
 ---
 
@@ -32,10 +35,9 @@
 |------|------|------|
 | 言語 | TypeScript | VSCode Extension 標準言語 |
 | ビルド | esbuild (バンドル) + tsc (型チェック) | 高速ビルド & 小バンドルサイズ |
-| UI フレームワーク | Webview (Preact + htm) | 軽量、JSX 不要、ビルド簡易 |
-| チャート | CSS/SVG ベース | 依存ゼロ、軽量 |
+| UI | VSCode ネイティブ API のみ | Webview 不使用、依存ゼロ、省メモリ、テーマ完全統合 |
 | JSON パース | ネイティブ `JSON.parse` | 追加依存不要 |
-| ファイル監視 | `vscode.workspace.FileSystemWatcher` + `fs.watch` | VSCode ネイティブ API |
+| ファイル監視 | `fs.watchFile` (ポーリング) | Docker ボリューム対応 |
 | テスト | Vitest (ユニット) + @vscode/test-electron (統合) | 高速・設定簡易 |
 | パッケージ | `@vscode/vsce` | VSCode Marketplace 公式ツール |
 
@@ -68,33 +70,20 @@ vscode-extension/
 │   │
 │   ├── provider/                         # VSCode UI プロバイダ
 │   │   ├── JobTreeProvider.ts            # TreeView: ジョブ一覧
-│   │   └── ProfilerWebviewProvider.ts    # WebviewView: メインパネル
+│   │   ├── QueryTreeProvider.ts          # TreeView: クエリ一覧 (展開で詳細)
+│   │   ├── StatisticsTreeProvider.ts     # TreeView: 統計ダッシュボード
+│   │   └── QueryDocumentProvider.ts      # Virtual Document: SQL 詳細表示
 │   │
 │   ├── command/                          # VSCode コマンド
 │   │   ├── startJob.ts                   # ジョブ開始
 │   │   ├── stopJob.ts                    # ジョブ停止
-│   │   └── openLog.ts                    # ログファイルを開く
+│   │   ├── openLog.ts                    # ログファイルを開く
+│   │   ├── filterQueries.ts             # クエリフィルタ (QuickPick)
+│   │   └── searchQueries.ts             # クエリ検索 (QuickPick)
 │   │
 │   └── util/                             # ユーティリティ
 │       ├── pathMapping.ts                # Docker パスマッピング
 │       └── queryUtils.ts                 # SQL 短縮・パラメータバインド
-│
-├── webview/                              # Webview UI ソース
-│   ├── index.html                        # Webview エントリ HTML
-│   ├── main.ts                           # Webview メインスクリプト
-│   ├── style.css                         # スタイルシート (VSCode テーマ連動)
-│   │
-│   ├── components/                       # UI コンポーネント
-│   │   ├── App.ts                        # ルートコンポーネント (タブ管理)
-│   │   ├── QueryLogTable.ts              # クエリ一覧テーブル
-│   │   ├── QueryDetail.ts               # クエリ詳細パネル
-│   │   ├── StatisticsView.ts            # 統計ダッシュボード
-│   │   ├── LiveTailView.ts              # リアルタイム監視
-│   │   └── FilterBar.ts                 # フィルタ・検索バー
-│   │
-│   └── lib/                              # Webview ユーティリティ
-│       ├── vscodeApi.ts                  # VSCode Webview API ラッパー
-│       └── sqlHighlight.ts              # 簡易 SQL シンタックスハイライト
 │
 └── test/
     ├── unit/                             # ユニットテスト (Vitest)
@@ -106,6 +95,11 @@ vscode-extension/
     └── integration/                      # 統合テスト (@vscode/test-electron)
         └── extension.test.ts
 ```
+
+**Webview 版との差分:**
+- `webview/` ディレクトリが不要 (HTML/CSS/JS ビルドパイプラインなし)
+- `ProfilerWebviewProvider.ts` → `QueryTreeProvider.ts` + `StatisticsTreeProvider.ts` + `QueryDocumentProvider.ts` に分解
+- フィルタ・検索は `command/` 配下に QuickPick ベースで実装
 
 ---
 
@@ -125,7 +119,7 @@ vscode-extension/
   "main": "./dist/extension.js",
 
   "contributes": {
-    // ジョブ一覧 TreeView
+    // Activity Bar コンテナ
     "viewsContainers": {
       "activitybar": [{
         "id": "mariadb-profiler",
@@ -133,6 +127,8 @@ vscode-extension/
         "icon": "resources/icons/profiler.svg"
       }]
     },
+
+    // 全て TreeView (Webview なし)
     "views": {
       "mariadb-profiler": [
         {
@@ -141,27 +137,48 @@ vscode-extension/
           "type": "tree"
         },
         {
-          "id": "mariadbProfiler.main",
-          "name": "Profiler",
-          "type": "webview"
+          "id": "mariadbProfiler.queries",
+          "name": "Queries",
+          "type": "tree"
+        },
+        {
+          "id": "mariadbProfiler.statistics",
+          "name": "Statistics",
+          "type": "tree"
         }
       ]
     },
 
     // コマンド
     "commands": [
-      { "command": "mariadbProfiler.startJob",  "title": "Start Profiling Job",  "category": "MariaDB Profiler", "icon": "$(play)" },
-      { "command": "mariadbProfiler.stopJob",   "title": "Stop Profiling Job",   "category": "MariaDB Profiler", "icon": "$(debug-stop)" },
-      { "command": "mariadbProfiler.openLog",   "title": "Open Profiler Log",    "category": "MariaDB Profiler", "icon": "$(folder-opened)" },
-      { "command": "mariadbProfiler.refresh",   "title": "Refresh",              "category": "MariaDB Profiler", "icon": "$(refresh)" }
+      { "command": "mariadbProfiler.startJob",       "title": "Start Profiling Job",   "category": "MariaDB Profiler", "icon": "$(play)" },
+      { "command": "mariadbProfiler.stopJob",        "title": "Stop Profiling Job",    "category": "MariaDB Profiler", "icon": "$(debug-stop)" },
+      { "command": "mariadbProfiler.openLog",        "title": "Open Profiler Log",     "category": "MariaDB Profiler", "icon": "$(folder-opened)" },
+      { "command": "mariadbProfiler.refresh",        "title": "Refresh",               "category": "MariaDB Profiler", "icon": "$(refresh)" },
+      { "command": "mariadbProfiler.filterByType",   "title": "Filter by Query Type",  "category": "MariaDB Profiler", "icon": "$(filter)" },
+      { "command": "mariadbProfiler.filterByTag",    "title": "Filter by Tag",         "category": "MariaDB Profiler", "icon": "$(tag)" },
+      { "command": "mariadbProfiler.searchQuery",    "title": "Search Queries",        "category": "MariaDB Profiler", "icon": "$(search)" },
+      { "command": "mariadbProfiler.clearFilter",    "title": "Clear Filters",         "category": "MariaDB Profiler", "icon": "$(clear-all)" },
+      { "command": "mariadbProfiler.showQuerySql",   "title": "Show Full SQL",         "category": "MariaDB Profiler", "icon": "$(open-preview)" },
+      { "command": "mariadbProfiler.startLiveTail",  "title": "Start Live Tail",       "category": "MariaDB Profiler", "icon": "$(eye)" },
+      { "command": "mariadbProfiler.stopLiveTail",   "title": "Stop Live Tail",        "category": "MariaDB Profiler", "icon": "$(eye-closed)" }
     ],
 
     // ツールバーボタン
     "menus": {
       "view/title": [
-        { "command": "mariadbProfiler.startJob", "when": "view == mariadbProfiler.jobs", "group": "navigation" },
-        { "command": "mariadbProfiler.stopJob",  "when": "view == mariadbProfiler.jobs", "group": "navigation" },
-        { "command": "mariadbProfiler.refresh",  "when": "view == mariadbProfiler.jobs", "group": "navigation" }
+        { "command": "mariadbProfiler.startJob",     "when": "view == mariadbProfiler.jobs",    "group": "navigation" },
+        { "command": "mariadbProfiler.stopJob",      "when": "view == mariadbProfiler.jobs",    "group": "navigation" },
+        { "command": "mariadbProfiler.refresh",      "when": "view == mariadbProfiler.jobs",    "group": "navigation" },
+        { "command": "mariadbProfiler.filterByType", "when": "view == mariadbProfiler.queries", "group": "navigation" },
+        { "command": "mariadbProfiler.filterByTag",  "when": "view == mariadbProfiler.queries", "group": "navigation" },
+        { "command": "mariadbProfiler.searchQuery",  "when": "view == mariadbProfiler.queries", "group": "navigation" },
+        { "command": "mariadbProfiler.clearFilter",  "when": "view == mariadbProfiler.queries", "group": "navigation" },
+        { "command": "mariadbProfiler.startLiveTail","when": "view == mariadbProfiler.queries", "group": "2_liveTail" },
+        { "command": "mariadbProfiler.stopLiveTail", "when": "view == mariadbProfiler.queries", "group": "2_liveTail" }
+      ],
+      "view/item/context": [
+        { "command": "mariadbProfiler.showQuerySql", "when": "view == mariadbProfiler.queries && viewItem == queryEntry", "group": "inline" }
       ]
     },
 
@@ -202,7 +219,7 @@ vscode-extension/
         "mariadbProfiler.pathMappings": {
           "type": "object",
           "default": {},
-          "description": "Path mappings for Docker environments (container path → local path)",
+          "description": "Path mappings for Docker environments (container path -> local path)",
           "additionalProperties": { "type": "string" }
         },
         "mariadbProfiler.frameResolverScript": {
@@ -222,186 +239,138 @@ vscode-extension/
 
 ```
 [PHP Extension]
-     │
-     ├── /var/profiler/jobs.json        ──→  JobManagerService  ──→  JobTreeProvider (TreeView)
-     │                                                                     │
-     │                                                                     └──→ Webview (タブ切替)
-     │
-     ├── /var/profiler/<key>.jsonl       ──→  LogParserService   ──→  Webview: QueryLogTable
-     │                                        (オフセット読み込み)         │
-     │                                                                     ├──→ QueryDetail
-     │                                                                     │       │
-     │                                                                     │       └──→ vscode.openTextDocument (ジャンプ)
-     │                                                                     │
-     │                                                                     └──→ StatisticsView
-     │
-     └── /var/profiler/<key>.raw.log    ──→  FileWatcherService  ──→  Webview: LiveTailView
+     |
+     +-- /var/profiler/jobs.json        --> JobManagerService  --> JobTreeProvider (TreeView)
+     |                                                                   |
+     |                                                                   +--> QueryTreeProvider (TreeView)
+     |                                                                          |
+     +-- /var/profiler/<key>.jsonl       --> LogParserService  -+                |
+     |                                     (offset read)       |                +--> QueryDocumentProvider
+     |                                                         |                |      (Virtual Document .sql)
+     |                                                         |                |
+     |                                                         |                +--> vscode.openTextDocument
+     |                                                         |                       (backtrace jump)
+     |                                                         |
+     |                                                         +--> StatisticsService
+     |                                                                   |
+     |                                                                   +--> StatisticsTreeProvider (TreeView)
+     |
+     +-- /var/profiler/<key>.raw.log    --> FileWatcherService  --> OutputChannel (Live Tail)
 
-[CLI Tool] ←── startJob / stopJob コマンド (child_process.execFile)
-```
-
----
-
-## Extension ⇔ Webview 通信プロトコル
-
-VSCode Extension (Host) と Webview 間は `postMessage` で通信する。
-
-### Extension → Webview メッセージ
-
-```typescript
-// ジョブ選択時にクエリデータを送信
-{ type: 'loadEntries', entries: QueryEntry[], jobKey: string }
-
-// 差分エントリ追加 (インクリメンタル更新)
-{ type: 'appendEntries', entries: QueryEntry[] }
-
-// 統計データ更新
-{ type: 'updateStats', stats: QueryStats }
-
-// Live Tail データ追加
-{ type: 'tailData', lines: string }
-
-// Live Tail クリア
-{ type: 'clearTail' }
-
-// フレーム解決結果
-{ type: 'resolvedFrame', entryIndex: number, frameIndex: number }
-```
-
-### Webview → Extension メッセージ
-
-```typescript
-// クエリ選択 (詳細表示 & フレーム解決要求)
-{ type: 'selectEntry', index: number }
-
-// バックトレースフレームクリック (エディタジャンプ)
-{ type: 'openFile', file: string, line: number }
-
-// フィルタ変更
-{ type: 'filterChanged', queryType: string | null, searchText: string }
-
-// タブ切替
-{ type: 'tabChanged', tab: 'queryLog' | 'statistics' | 'liveTail' }
-
-// Live Tail 開始/停止
-{ type: 'startTail' | 'stopTail' }
+[CLI Tool] <-- startJob / stopJob commands (child_process.execFile)
 ```
 
 ---
 
 ## UI レイアウト
 
-### サイドバー (Activity Bar)
+### サイドバー全体像
 
 ```
-┌──────────────────────┐
-│ ☰ MariaDB Profiler   │
-├──────────────────────┤
-│ JOBS        [▶][■][↻]│
-│                      │
-│ ● job-abc123  (42)   │
-│ ● job-def456  (18)   │
-│ ○ job-ghi789  (156)  │
-│ ○ job-jkl012  (73)   │
-│                      │
-├──────────────────────┤
-│ PROFILER             │
-│ (Webview - 下記参照)  │
-│                      │
-└──────────────────────┘
++--------------------------------------------------------------+
+| (i) MariaDB Profiler                                          |
++--------------------------------------------------------------+
+| JOBS                                     [>] [#] [refresh]    |
+|                                                                |
+| * job-abc123  42 queries, 3.2s                                |
+| * job-def456  18 queries, 1.1s                                |
+| o job-ghi789  156 queries, 45.0s                              |
+| o job-jkl012  73 queries, 12.3s                               |
+|                                                                |
++--------------------------------------------------------------+
+| QUERIES  [filter] [tag] [search] [clear]  Filter: SELECT      |
+|                                                                |
+| > SELECT  SELECT u.* FROM us...        [api] 14:23:01         |
+| v INSERT  INSERT INTO logs ...         [api] 14:23:01         |
+|   +-- Tables: logs                                            |
+|   +-- Tags: api                                               |
+|   +-- Params: ?1 = 1                                          |
+|   +-- Backtrace:                                              |
+|       > LogService.php:28  log()                 <- click     |
+|         Router.php:128     dispatch()            <- click     |
+|   +-- [Show Full SQL]                                         |
+| > SELECT  SELECT p.*, u.name...        [web] 14:23:02         |
+| > UPDATE  UPDATE users SET l...        [web] 14:23:02         |
+|                                                                |
++--------------------------------------------------------------+
+| STATISTICS                                                     |
+|                                                                |
+| Total Queries: 156                                            |
+|                                                                |
+| v Query Types                                                 |
+|   SELECT  ||||||||||||||||||||||||          78 (50%)           |
+|   INSERT  ||||||||                         12 (8%)            |
+|   UPDATE  ||||||                            8 (5%)            |
+|   DELETE  ||                                2 (1%)            |
+|                                                                |
+| v Top Tables                                                  |
+|   users      ||||||||||||||||||||           45 (29%)          |
+|   posts      ||||||||||||||||              30 (19%)           |
+|   comments   ||||||||||                    18 (12%)           |
+|   logs       ||||                           7 (4%)            |
+|                                                                |
+| v Top Tags                                                    |
+|   api        ||||||||||||||||||||||||       60 (38%)          |
+|   web        ||||||||||||                  30 (19%)           |
+|   cron       ||||                          10 (6%)            |
+|                                                                |
++--------------------------------------------------------------+
 ```
 
-`●` = Active job, `○` = Completed job, `(N)` = クエリ数
+### エディタ領域 (Virtual Document)
 
-### メイン Webview パネル
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  [Query Log]  [Statistics]  [Live Tail]                      │
-├──────────────────────────────────────────────────────────────┤
-│  Filter: [All ▼] [SELECT] [INSERT] [UPDATE] [DELETE]         │
-│  Search: [________________________] 🔍                       │
-├──────────────────────────────────────────────────────────────┤
-│  #   Time       Type    SQL                     Tags         │
-│  1   14:23:01   SELECT  SELECT u.* FROM us…     [api]        │
-│  2   14:23:01   INSERT  INSERT INTO logs …      [api]        │
-│  3   14:23:02   SELECT  SELECT p.*, u.name…     [web]        │
-│  4   14:23:02   UPDATE  UPDATE users SET l…     [web]        │
-├──────────────────────────────────────────────────────────────┤
-│  ▾ Query Detail                                              │
-│  ┌────────────────────────────────────────────────────────┐  │
-│  │ SELECT u.*, p.title, p.content                         │  │
-│  │ FROM users u                                            │  │
-│  │ JOIN posts p ON p.user_id = u.id                       │  │
-│  │ WHERE u.active = ?                                      │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                              │
-│  Bound Parameters: ?1 = 1                                    │
-│  Tables: users, posts                                        │
-│  Tags: [api] [v2]                                            │
-│                                                              │
-│  Backtrace:                                                  │
-│  ▸ UserController.php:42  getUserPosts()           [↗ Open]  │ ← 緑ハイライト
-│    Router.php:128         dispatch()               [↗ Open]  │
-│    index.php:15           main()                   [↗ Open]  │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### Statistics タブ
+クエリを選択して "Show Full SQL" すると、エディタタブとして SQL が開く:
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  [Query Log]  [Statistics]  [Live Tail]                      │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Total Queries: 156                                          │
-│                                                              │
-│  Query Types                                                 │
-│  ┌──────────────────────────────────────────────────┐       │
-│  │ SELECT  ████████████████████████████░░░░  78%     │       │
-│  │ INSERT  ████████░░░░░░░░░░░░░░░░░░░░░░░  12%     │       │
-│  │ UPDATE  █████░░░░░░░░░░░░░░░░░░░░░░░░░░   8%     │       │
-│  │ DELETE  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   2%     │       │
-│  └──────────────────────────────────────────────────┘       │
-│                                                              │
-│  Top Tables                                                  │
-│  ┌──────────────────────────────────────────────────┐       │
-│  │ users      ████████████████████████░░░░░░  45%    │       │
-│  │ posts      ████████████████░░░░░░░░░░░░░░  30%    │       │
-│  │ comments   ██████████░░░░░░░░░░░░░░░░░░░░  18%    │       │
-│  │ logs       ████░░░░░░░░░░░░░░░░░░░░░░░░░░   7%    │       │
-│  └──────────────────────────────────────────────────┘       │
-│                                                              │
-│  Top Tags                                                    │
-│  ┌──────────────────────────────────────────────────┐       │
-│  │ api        ████████████████████░░░░░░░░░░  60%    │       │
-│  │ web        ████████████░░░░░░░░░░░░░░░░░░  30%    │       │
-│  │ cron       ████░░░░░░░░░░░░░░░░░░░░░░░░░░  10%    │       │
-│  └──────────────────────────────────────────────────┘       │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
++--------------------------------------------------------------+
+| [x] Query #3 - SELECT (mariadb-profiler)                      |
++--------------------------------------------------------------+
+| -- Job: job-abc123                                            |
+| -- Time: 2025-01-23 14:23:02.000                             |
+| -- Tags: web                                                  |
+| -- Status: OK                                                 |
+|                                                                |
+| SELECT p.*, u.name                                            |
+| FROM posts p                                                  |
+| JOIN users u ON u.id = p.user_id                              |
+| WHERE u.active = ?                                            |
+|                                                                |
+| -- Bound Parameters:                                          |
+| -- ?1 = 1                                                     |
+|                                                                |
+| -- Backtrace:                                                 |
+| -- #0 /app/Http/Controllers/UserController.php:42             |
+| -- #1 /vendor/laravel/framework/.../Router.php:128            |
+| -- #2 /public/index.php:15                                    |
++--------------------------------------------------------------+
 ```
 
-### Live Tail タブ
+- `.sql` として登録するため、VSCode の SQL シンタックスハイライトが自動適用
+- メタデータ (ジョブ、タイムスタンプ、パラメータ、バックトレース) は SQL コメント (`--`) として記述
+- 読み取り専用 (`TextDocumentContentProvider`)
+
+### OutputChannel (Live Tail)
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  [Query Log]  [Statistics]  [Live Tail]                      │
-├──────────────────────────────────────────────────────────────┤
-│  Status: 🟢 Watching job-abc123          [Clear] [Pause]     │
-├──────────────────────────────────────────────────────────────┤
-│  [2025-01-23 14:23:01.000] OK [api] SELECT u.* FROM users…  │
-│  #0 /var/www/app/Http/Controllers/UserController.php:42      │
-│  #1 /var/www/vendor/laravel/framework/.../Router.php:128     │
-│                                                              │
-│  [2025-01-23 14:23:01.050] OK [api] INSERT INTO logs …       │
-│  #0 /var/www/app/Services/LogService.php:28                  │
-│                                                              │
-│  [2025-01-23 14:23:02.100] OK [web] UPDATE users SET …       │
-│  #0 /var/www/app/Http/Controllers/AuthController.php:95      │
-│  █                                                           │
-└──────────────────────────────────────────────────────────────┘
++--------------------------------------------------------------+
+| OUTPUT                    [MariaDB Profiler Live Tail v]       |
++--------------------------------------------------------------+
+| [2025-01-23 14:23:01.000] OK [api] SELECT u.* FROM users...  |
+|   #0 /app/Http/Controllers/UserController.php:42              |
+|   #1 /vendor/laravel/framework/.../Router.php:128             |
+|                                                                |
+| [2025-01-23 14:23:01.050] OK [api] INSERT INTO logs ...       |
+|   #0 /app/Services/LogService.php:28                          |
+|                                                                |
+| [2025-01-23 14:23:02.100] OK [web] UPDATE users SET ...       |
+|   #0 /app/Http/Controllers/AuthController.php:95              |
++--------------------------------------------------------------+
 ```
+
+- `vscode.window.createOutputChannel("MariaDB Profiler Live Tail")` で作成
+- `.show(true)` でフォーカスを奪わずに表示
+- `appendLine()` でリアルタイム追記
+- `clear()` でバッファクリア
 
 ---
 
@@ -601,7 +570,7 @@ return 0;
 
 #### JobTreeProvider.ts
 
-VSCode ネイティブ TreeView で ジョブ一覧を表示。
+VSCode ネイティブ TreeView でジョブ一覧を表示。
 
 ```typescript
 export class JobTreeProvider implements vscode.TreeDataProvider<JobTreeItem> {
@@ -623,66 +592,192 @@ export class JobTreeItem extends vscode.TreeItem {
 - ラベル: `job.key` (先頭 12 文字に短縮)
 - 説明 (description): `"42 queries, 3.2s"` 形式
 - コンテキスト値: `activeJob` / `completedJob` (コンテキストメニュー制御用)
+- クリック時: `QueryTreeProvider` と `StatisticsTreeProvider` をそのジョブのデータで更新
 
-#### ProfilerWebviewProvider.ts
+#### QueryTreeProvider.ts
 
-メイン UI を Webview で提供。
+クエリ一覧を TreeView で表示。展開すると詳細情報を表示。
 
 ```typescript
-export class ProfilerWebviewProvider implements vscode.WebviewViewProvider {
-  resolveWebviewView(webviewView: vscode.WebviewView): void;
+export class QueryTreeProvider implements vscode.TreeDataProvider<QueryTreeItem> {
+  private _onDidChangeTreeData = new vscode.EventEmitter<void>();
+  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  // ジョブ選択時の処理
-  selectJob(jobKey: string): void;
+  // ジョブのクエリデータをロード
+  loadEntries(entries: QueryEntry[]): void;
 
-  // 定期更新タイマー
-  private startRefreshTimer(): void;
-  private stopRefreshTimer(): void;
+  // フィルタ・検索
+  setFilter(queryType: string | null): void;
+  setTagFilter(tag: string | null): void;
+  setSearchText(text: string | null): void;
+  clearFilters(): void;
 
-  // Webview ↔ Extension メッセージハンドリング
-  private handleWebviewMessage(message: any): void;
-  private postMessage(message: any): void;
+  // TreeDataProvider
+  getTreeItem(element: QueryTreeItem): vscode.TreeItem;
+  getChildren(element?: QueryTreeItem): QueryTreeItem[];
+}
+
+type QueryTreeItem = QueryEntryItem | QueryMetadataItem | BacktraceFrameItem;
+
+// 第1階層: クエリエントリ (折りたたみ可能)
+export class QueryEntryItem extends vscode.TreeItem {
+  contextValue = 'queryEntry';
+  // ラベル:   "SELECT  SELECT u.* FROM us..."
+  // 説明:     "[api] 14:23:01"
+  // アイコン:  クエリ種別に応じた色 (ThemeIcon)
+  //           SELECT=$(database), INSERT=$(add), UPDATE=$(edit), DELETE=$(trash)
+}
+
+// 第2階層: メタデータ (展開時に表示)
+export class QueryMetadataItem extends vscode.TreeItem {
+  // "Tables: users, posts"
+  // "Tags: api, v2"
+  // "Params: ?1 = 1"
+  // "Status: OK"
+}
+
+// 第2階層: バックトレースフレーム (クリックでファイルジャンプ)
+export class BacktraceFrameItem extends vscode.TreeItem {
+  // ラベル:  "UserController.php:42  getUserPosts()"
+  // アイコン: $(arrow-right) (通常) / $(arrow-right) + 緑色 (解決済みフレーム)
+  // command: vscode.open (クリックでエディタにジャンプ)
 }
 ```
 
-**Webview セキュリティ:**
-- `localResourceRoots` で Webview がアクセスできるファイルを制限
-- CSP (Content Security Policy) を適切に設定
-- `nonce` ベースのスクリプト実行許可
+**TreeView の description を活用したカラム風表示:**
+```
+  [icon] SELECT u.* FROM us...          [api] 14:23:01
+  ^^^^^  ^^^^^^^^^^^^^^^^^^^^^^          ^^^^^^^^^^^^^
+  icon   label                           description
+```
+
+TreeItem の `label` にクエリ SQL (短縮)、`description` にタグ+時刻を設定することで、擬似的な 2 カラム表示を実現。
+
+#### StatisticsTreeProvider.ts
+
+統計情報を TreeView で表示。Unicode バーチャートで視覚化。
+
+```typescript
+export class StatisticsTreeProvider implements vscode.TreeDataProvider<StatTreeItem> {
+  private _onDidChangeTreeData = new vscode.EventEmitter<void>();
+  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+
+  // 統計データ更新
+  updateStats(stats: QueryStats): void;
+
+  // TreeDataProvider
+  getTreeItem(element: StatTreeItem): vscode.TreeItem;
+  getChildren(element?: StatTreeItem): StatTreeItem[];
+}
+
+type StatTreeItem = StatCategoryItem | StatBarItem;
+
+// 第1階層: カテゴリ (折りたたみ可能)
+export class StatCategoryItem extends vscode.TreeItem {
+  // "Total Queries: 156"
+  // "Query Types" (collapsible)
+  // "Top Tables"  (collapsible)
+  // "Top Tags"    (collapsible)
+}
+
+// 第2階層: 個別統計 (Unicode バーチャート)
+export class StatBarItem extends vscode.TreeItem {
+  // ラベル: "SELECT  ████████████████████████"
+  // 説明:   "78 (50%)"
+}
+```
+
+**Unicode バーチャート生成:**
+```typescript
+function generateBar(value: number, max: number, barWidth: number = 24): string {
+  const filled = Math.round((value / max) * barWidth);
+  return '█'.repeat(filled) + '░'.repeat(barWidth - filled);
+}
+
+// 例: generateBar(78, 156, 24) → "████████████░░░░░░░░░░░░"
+```
+
+#### QueryDocumentProvider.ts
+
+Virtual Document で SQL 詳細を表示。
+
+```typescript
+export class QueryDocumentProvider implements vscode.TextDocumentContentProvider {
+  // URI スキーム: "mariadb-profiler"
+  static readonly scheme = 'mariadb-profiler';
+
+  provideTextDocumentContent(uri: vscode.Uri): string;
+
+  // クエリエントリを Virtual Document として開く
+  showQueryDetail(entry: QueryEntry, index: number): void;
+}
+```
+
+**URI 設計:**
+```
+mariadb-profiler:query-3.sql?job=abc123&index=3
+```
+
+- `.sql` 拡張子 → VSCode が SQL 言語モードを自動適用
+- `TextDocumentContentProvider` のため読み取り専用
+- ドキュメント内容: SQL + パラメータ + バックトレース (全て SQL コメントで装飾)
+
+**利点:**
+- SQL シンタックスハイライトが無料で得られる (VSCode 組み込み)
+- ユーザーが好みの SQL Extension を入れていればそれも適用される
+- `editor.wordWrap` など通常のエディタ設定が有効
 
 ---
 
-## Webview 実装詳細
+## フィルタ・検索の UI フロー
 
-### テーマ連動
+Webview ではフィルタバーを常時表示できるが、ネイティブ API ではそれができない。
+代わりに以下の方法で操作性を確保する:
 
-VSCode のカラーテーマに自動適応するため、CSS 変数を活用:
+### 1. QuickPick によるフィルタ
 
-```css
-:root {
-  /* VSCode テーマ変数を継承 */
-  --vscode-editor-background: var(--vscode-editor-background);
-  --vscode-editor-foreground: var(--vscode-editor-foreground);
-  --vscode-list-activeSelectionBackground: var(--vscode-list-activeSelectionBackground);
-  /* ... */
-}
+```
+[コマンドパレット or ツールバーボタン]
+  ↓
++------------------------------------------+
+| Filter by Query Type                      |
++------------------------------------------+
+| > All (clear filter)                      |
+|   SELECT (78 queries)                     |
+|   INSERT (12 queries)                     |
+|   UPDATE (8 queries)                      |
+|   DELETE (2 queries)                      |
++------------------------------------------+
 ```
 
-### 仮想スクロール
+### 2. QuickPick によるタグフィルタ
 
-大量クエリ (10,000+) のパフォーマンス対策:
-- テーブルは仮想スクロールで描画 (表示領域 + バッファ行のみ DOM に存在)
-- 全件データは Extension 側で保持し、フィルタ結果を Webview に送信
-- ページネーションは不要 (仮想スクロールで対応)
+```
++------------------------------------------+
+| Filter by Tag                             |
++------------------------------------------+
+| > All (clear filter)                      |
+|   api (60 queries)                        |
+|   web (30 queries)                        |
+|   cron (10 queries)                       |
++------------------------------------------+
+```
 
-### SQL シンタックスハイライト
+### 3. InputBox による検索
 
-軽量な正規表現ベースのハイライター:
-- キーワード: `SELECT`, `FROM`, `WHERE`, `JOIN`, `INSERT`, `UPDATE`, `DELETE` etc.
-- 文字列リテラル: `'...'`
-- 数値リテラル
-- コメント: `--`, `/* */`
-- パラメータプレースホルダー: `?`
+```
++------------------------------------------+
+| Search queries (SQL text)                 |
++------------------------------------------+
+| users                                     |
++------------------------------------------+
+```
+
+### 4. 現在のフィルタ状態表示
+
+TreeView のタイトル (view/title) の `description` でフィルタ状態を表示:
+- `"QUERIES (SELECT, tag:api, search:'users')"` のように表示
+- StatusBar アイテムでも現在のフィルタ状態を表示可能
 
 ---
 
@@ -697,7 +792,8 @@ VSCode のカラーテーマに自動適応するため、CSS 変数を活用:
 
 2. **Extension エントリポイント**
    - `extension.ts` に `activate()` / `deactivate()` 実装
-   - コマンド登録、TreeView 登録、WebviewProvider 登録
+   - コマンド登録、全 TreeView 登録、OutputChannel 登録
+   - `TextDocumentContentProvider` 登録
 
 3. **データモデル定義**
    - `QueryEntry.ts`, `JobInfo.ts`, `BacktraceFrame.ts`
@@ -720,64 +816,101 @@ VSCode のカラーテーマに自動適応するため、CSS 変数を活用:
    - TreeView でジョブ一覧表示
    - ジョブ選択イベント発火
 
-8. **ProfilerWebviewProvider + Webview UI**
-   - Webview 基本構成 (HTML + CSS + JS)
-   - QueryLogTable コンポーネント
-   - QueryDetail コンポーネント
-   - フィルタ・検索 UI
+8. **QueryTreeProvider**
+   - TreeView でクエリ一覧表示
+   - 展開でメタデータ (テーブル、タグ、パラメータ) 表示
+   - 展開でバックトレース表示
 
-### Phase 3: ナビゲーション & Live Tail
+9. **QueryDocumentProvider**
+   - Virtual Document (`.sql`) でフル SQL 表示
+   - SQL コメントでメタデータ・バックトレース記述
 
-9. **バックトレースナビゲーション**
-   - `openFile` メッセージハンドラ
-   - `vscode.workspace.openTextDocument` + `showTextDocument` でジャンプ
-   - パスマッピング適用
+### Phase 3: フィルタ・ナビゲーション & Live Tail
 
-10. **FrameResolverService**
+10. **フィルタ・検索コマンド**
+    - `filterByType`: QuickPick でクエリ種別フィルタ
+    - `filterByTag`: QuickPick でタグフィルタ
+    - `searchQuery`: InputBox でテキスト検索
+    - `clearFilter`: 全フィルタクリア
+
+11. **バックトレースナビゲーション**
+    - `BacktraceFrameItem` クリックで `vscode.workspace.openTextDocument` + `showTextDocument`
+    - パスマッピング適用
+
+12. **FrameResolverService**
     - JavaScript (`vm` モジュール) によるフレーム解決
     - デフォルトスクリプト提供
+    - 解決済みフレームに `$(arrow-right)` + 緑色アイコン
 
-11. **FileWatcherService**
+13. **FileWatcherService**
     - `fs.watchFile` によるポーリング監視
     - 変更検知コールバック
 
-12. **LiveTailView**
-    - Raw ログのリアルタイム表示
-    - 一時停止/再開/クリア機能
+14. **Live Tail (OutputChannel)**
+    - `vscode.window.createOutputChannel("MariaDB Profiler Live Tail")`
+    - `startLiveTail` / `stopLiveTail` コマンド
+    - `appendLine()` でリアルタイム追記
+    - バッファサイズ超過時に `clear()` + 再出力
 
 ### Phase 4: 統計 & CLI 連携
 
-13. **StatisticsService**
+15. **StatisticsService**
     - クエリ統計計算
 
-14. **StatisticsView**
-    - CSS/SVG バーチャート
-    - クエリ種別分布、テーブル別頻度、タグ別頻度
+16. **StatisticsTreeProvider**
+    - TreeView で統計表示
+    - Unicode バーチャート (`████░░░░`) で視覚化
+    - カテゴリ: クエリ種別分布、テーブル別頻度、タグ別頻度
 
-15. **CLI コマンド統合**
+17. **CLI コマンド統合**
     - `startJob` / `stopJob` コマンド実装
     - `child_process.execFile` で PHP CLI 呼び出し
 
-16. **OpenLog コマンド**
+18. **OpenLog コマンド**
     - ファイルピッカーで `.jsonl` ファイル選択
-    - 選択ファイルをエディタで開く
 
 ### Phase 5: 品質 & 仕上げ
 
-17. **ユニットテスト**
+19. **ユニットテスト**
     - LogParserService, JobManagerService, StatisticsService, QueryEntry のテスト
     - Vitest で実行
 
-18. **統合テスト**
+20. **統合テスト**
     - @vscode/test-electron で Extension 全体テスト
 
-19. **アイコン・UI 微調整**
+21. **アイコン・UI 微調整**
     - SVG アイコン作成 (JetBrains 版を参考)
-    - CSS テーマ最適化 (ライト/ダーク両対応)
+    - ThemeIcon カラー設定
 
-20. **ドキュメント**
+22. **ドキュメント**
     - README.md (Marketplace 用)
     - CHANGELOG.md
+
+---
+
+## Webview 版との比較
+
+### メリット (ネイティブ API 方式)
+
+| 項目 | 詳細 |
+|------|------|
+| **依存ゼロ** | HTML/CSS/JS ビルドパイプライン不要。Webview フレームワーク (Preact/React) 不要 |
+| **軽量** | Chromium プロセスを起動しないため省メモリ |
+| **テーマ完全統合** | ネイティブ UI は VSCode テーマに自動追従。CSS 変数のマッピング不要 |
+| **実装が速い** | Extension ↔ Webview 間の `postMessage` 通信プロトコル設計が不要 |
+| **Remote SSH / WSL** | Webview より安定動作 |
+| **ビルド簡易** | esbuild で Extension のみバンドル。Webview 用の別ビルド不要 |
+| **セキュリティ** | CSP 設定、nonce 管理、`localResourceRoots` 管理が不要 |
+
+### デメリット・制約
+
+| 項目 | 詳細 | 緩和策 |
+|------|------|--------|
+| **テーブル表示** | TreeView にカラム幅調整・ソート・水平スクロールがない | `label` + `description` で擬似 2 カラム表示 |
+| **統計チャート** | 棒グラフは Unicode 文字 (`████`) での近似表現 | 十分視覚的に分かりやすい |
+| **フィルタ UI** | 常時表示のフィルタバーが作れない | QuickPick + ツールバーボタン + ステータスバー表示 |
+| **レイアウト** | スプリットペイン・複雑なレイアウト不可 | サイドバー 3 セクション構成で十分 |
+| **仮想スクロール** | TreeView は VSCode が管理 (10,000 件でもパフォーマンス良好) | `maxQueries` 設定で上限制御 |
 
 ---
 
@@ -787,25 +920,27 @@ VSCode のカラーテーマに自動適応するため、CSS 変数を活用:
 
 | 観点 | JetBrains | VSCode |
 |------|-----------|--------|
-| UI 描画 | Swing (ネイティブ Java UI) | Webview (HTML/CSS/JS) |
-| テーブル | JTable + TableModel | HTML `<table>` + 仮想スクロール |
-| チャート | Graphics2D / JFreeChart | CSS/SVG |
-| スプリットペイン | JSplitPane | CSS flexbox / resizable divider |
+| UI 描画 | Swing (ネイティブ Java UI) | VSCode TreeView + Virtual Document + OutputChannel |
+| テーブル | JTable + TableModel | TreeView (展開式) |
+| チャート | Graphics2D | Unicode バーチャート (`████░░░░`) |
+| スプリットペイン | JSplitPane | サイドバー 3 セクション |
+| SQL 表示 | JTextArea + HTML | Virtual Document (.sql) - エディタタブ |
+| Live Tail | カスタムパネル | OutputChannel |
+| フィルタ | テーブル上のフィルタバー | QuickPick (コマンドパレット) |
 | ファイル選択 | JFileChooser | `vscode.window.showOpenDialog` |
 | 通知 | Messages.showInfoMessage | `vscode.window.showInformationMessage` |
 
 ### 2. パフォーマンス
 
-- **Webview の制約**: DOM 操作は JTable より重いため、仮想スクロール必須
-- **メッセージパッシング**: Extension ↔ Webview 間は非同期 `postMessage`、大量データは分割送信
-- **メモリ**: Webview はブラウザプロセスで動作するため、大量データは Extension 側でフィルタしてから送信
+- **TreeView**: VSCode が内部で仮想化しているため、大量アイテムでもパフォーマンス良好
+- **Virtual Document**: エディタの標準パスで動作するため、大きな SQL でも問題なし
+- **OutputChannel**: ネイティブテキスト出力のため、高速にログ追記可能
 
 ### 3. フレームリゾルバ
 
 - JetBrains 版: **Groovy** スクリプト (JVM 上で実行)
 - VSCode 版: **JavaScript** スクリプト (Node.js `vm` モジュール)
 - API は同等 (`trace`, `tag`, `query` 変数を提供)
-- ユーザーへの影響: 既存の Groovy スクリプトは JavaScript に書き換えが必要 (構文は類似)
 
 ### 4. ファイル監視
 
@@ -817,7 +952,6 @@ VSCode のカラーテーマに自動適応するため、CSS 変数を活用:
 
 - JetBrains 版: `PersistentStateComponent` + カスタム設定ダイアログ
 - VSCode 版: `contributes.configuration` (VSCode 標準 Settings UI で編集)
-- JSON 形式のパスマッピングは VSCode Settings の JSON エディタで編集可能
 
 ---
 
@@ -825,11 +959,11 @@ VSCode のカラーテーマに自動適応するため、CSS 変数を活用:
 
 | リスク | 影響度 | 対策 |
 |--------|--------|------|
-| Webview パフォーマンス (大量クエリ) | 中 | 仮想スクロール、フィルタ済みデータのみ送信 |
+| TreeView で大量クエリ表示時のパフォーマンス | 低 | VSCode の TreeView は内部で遅延読み込み。`maxQueries` で上限設定 |
 | Docker ボリュームのファイル監視 | 中 | `fs.watchFile` ポーリング (1秒間隔) |
-| Extension ↔ Webview 通信オーバーヘッド | 低 | バッチ送信、差分更新 |
-| Remote SSH / WSL 環境 | 低 | Remote 環境では Extension がリモートで動作するため自然対応 |
-| Webview 永続性 (タブ非表示時) | 中 | `retainContextWhenHidden: true` で Webview 状態保持 |
+| フィルタ操作の手数 (QuickPick 呼び出し) | 中 | ツールバーボタンで 1 クリックアクセス。キーボードショートカット設定可能 |
+| TreeView のカラム表示制限 | 低 | `label` + `description` で十分な情報表示可能 |
+| Remote SSH / WSL 環境 | 低 | ネイティブ API のみ使用のため、Webview より安定 |
 
 ---
 
@@ -837,6 +971,6 @@ VSCode のカラーテーマに自動適応するため、CSS 変数を活用:
 
 1. **CodeLens 統合** - PHP ファイル上でクエリ実行元行にインラインでクエリ情報表示
 2. **Diagnostic 統合** - 重いクエリを Warning として表示
-3. **Notebook 統合** - プロファイリング結果を Jupyter Notebook 形式でエクスポート
-4. **Language Server** - SQL 補完・バリデーション
-5. **Testing Integration** - テスト実行時の自動プロファイリング
+3. **Testing Integration** - テスト実行時の自動プロファイリング
+4. **TreeView Drag & Drop** - クエリをエディタにドラッグして SQL 挿入
+5. **StatusBar 統合** - アクティブジョブのクエリ数をリアルタイム表示
