@@ -1,0 +1,240 @@
+{
+  "name": "mariadb-profiler-viewer",
+  "displayName": "MariaDB Profiler Viewer",
+  "description": "Visualize and analyze MariaDB/MySQL query profiling data from php-ext-mariadb-salvage",
+  "version": "0.1.0",
+  "publisher": "mariadb-profiler",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Debuggers"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "mariadb-profiler",
+          "title": "MariaDB Profiler",
+          "icon": "resources/icons/profiler.svg"
+        }
+      ]
+    },
+    "views": {
+      "mariadb-profiler": [
+        {
+          "id": "mariadbProfiler.jobs",
+          "name": "Jobs",
+          "type": "tree"
+        },
+        {
+          "id": "mariadbProfiler.queries",
+          "name": "Queries",
+          "type": "tree"
+        },
+        {
+          "id": "mariadbProfiler.statistics",
+          "name": "Statistics",
+          "type": "tree"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "mariadbProfiler.startJob",
+        "title": "Start Profiling Job",
+        "category": "MariaDB Profiler",
+        "icon": "$(play)"
+      },
+      {
+        "command": "mariadbProfiler.stopJob",
+        "title": "Stop Profiling Job",
+        "category": "MariaDB Profiler",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "mariadbProfiler.openLog",
+        "title": "Open Profiler Log",
+        "category": "MariaDB Profiler",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "mariadbProfiler.refresh",
+        "title": "Refresh",
+        "category": "MariaDB Profiler",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "mariadbProfiler.filterByType",
+        "title": "Filter by Query Type",
+        "category": "MariaDB Profiler",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "mariadbProfiler.filterByTag",
+        "title": "Filter by Tag",
+        "category": "MariaDB Profiler",
+        "icon": "$(tag)"
+      },
+      {
+        "command": "mariadbProfiler.searchQuery",
+        "title": "Search Queries",
+        "category": "MariaDB Profiler",
+        "icon": "$(search)"
+      },
+      {
+        "command": "mariadbProfiler.clearFilter",
+        "title": "Clear Filters",
+        "category": "MariaDB Profiler",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "mariadbProfiler.showQuerySql",
+        "title": "Show Full SQL",
+        "category": "MariaDB Profiler",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "mariadbProfiler.startLiveTail",
+        "title": "Start Live Tail",
+        "category": "MariaDB Profiler",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "mariadbProfiler.stopLiveTail",
+        "title": "Stop Live Tail",
+        "category": "MariaDB Profiler",
+        "icon": "$(eye-closed)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "mariadbProfiler.startJob",
+          "when": "view == mariadbProfiler.jobs",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mariadbProfiler.stopJob",
+          "when": "view == mariadbProfiler.jobs",
+          "group": "navigation@2"
+        },
+        {
+          "command": "mariadbProfiler.refresh",
+          "when": "view == mariadbProfiler.jobs",
+          "group": "navigation@3"
+        },
+        {
+          "command": "mariadbProfiler.filterByType",
+          "when": "view == mariadbProfiler.queries",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mariadbProfiler.filterByTag",
+          "when": "view == mariadbProfiler.queries",
+          "group": "navigation@2"
+        },
+        {
+          "command": "mariadbProfiler.searchQuery",
+          "when": "view == mariadbProfiler.queries",
+          "group": "navigation@3"
+        },
+        {
+          "command": "mariadbProfiler.clearFilter",
+          "when": "view == mariadbProfiler.queries && mariadbProfiler.hasFilter",
+          "group": "navigation@4"
+        },
+        {
+          "command": "mariadbProfiler.startLiveTail",
+          "when": "view == mariadbProfiler.queries && !mariadbProfiler.liveTailActive",
+          "group": "2_liveTail"
+        },
+        {
+          "command": "mariadbProfiler.stopLiveTail",
+          "when": "view == mariadbProfiler.queries && mariadbProfiler.liveTailActive",
+          "group": "2_liveTail"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "mariadbProfiler.showQuerySql",
+          "when": "view == mariadbProfiler.queries && viewItem == queryEntry",
+          "group": "inline"
+        },
+        {
+          "command": "mariadbProfiler.stopJob",
+          "when": "view == mariadbProfiler.jobs && viewItem == activeJob"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MariaDB Profiler",
+      "properties": {
+        "mariadbProfiler.logDirectory": {
+          "type": "string",
+          "default": "/tmp/mariadb_profiler",
+          "description": "Directory where profiler writes jobs.json and *.jsonl files"
+        },
+        "mariadbProfiler.phpPath": {
+          "type": "string",
+          "default": "php",
+          "description": "Path to PHP executable for CLI operations"
+        },
+        "mariadbProfiler.cliScriptPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to mariadb_profiler.php CLI tool (auto-detected from workspace if empty)"
+        },
+        "mariadbProfiler.maxQueries": {
+          "type": "number",
+          "default": 10000,
+          "description": "Maximum number of queries to display"
+        },
+        "mariadbProfiler.refreshInterval": {
+          "type": "number",
+          "default": 5,
+          "description": "Auto-refresh interval in seconds"
+        },
+        "mariadbProfiler.tailBufferSize": {
+          "type": "number",
+          "default": 500,
+          "description": "Number of lines to keep in live tail buffer"
+        },
+        "mariadbProfiler.pathMappings": {
+          "type": "object",
+          "default": {},
+          "description": "Path mappings for Docker environments (container path -> local path)",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "mariadbProfiler.frameResolverScript": {
+          "type": "string",
+          "default": "",
+          "description": "JavaScript code for custom frame resolution (receives trace, tag, query variables)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "esbuild": "^0.19.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}
