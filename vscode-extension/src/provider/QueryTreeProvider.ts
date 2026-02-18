@@ -202,7 +202,8 @@ export class QueryEntryItem extends vscode.TreeItem {
 
   constructor(entry: QueryEntry, entryIndex: number) {
     const qtype = getQueryType(entry);
-    const shortSql = getShortSql(entry, 50);
+    const boundSql = getBoundQuery(entry).replace(/\s+/g, ' ').trim();
+    const shortSql = boundSql.length <= 50 ? boundSql : boundSql.substring(0, 47) + '...';
     const label = `${qtype}  ${shortSql}`;
 
     super(label, vscode.TreeItemCollapsibleState.Collapsed);

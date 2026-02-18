@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { JobManagerService } from '../service/JobManagerService';
 import { LogParserService } from '../service/LogParserService';
 import { FileWatcherService } from '../service/FileWatcherService';
-import { getQueryType, getShortSql, formatTimestamp } from '../model/QueryEntry';
+import { getQueryType, getBoundQuery, formatTimestamp } from '../model/QueryEntry';
 
 export class LiveTailManager implements vscode.Disposable {
   private outputChannel: vscode.OutputChannel;
@@ -84,7 +84,8 @@ export class LiveTailManager implements vscode.Disposable {
 
     for (const entry of result.entries) {
       const qtype = getQueryType(entry);
-      const shortSql = getShortSql(entry, 80);
+      const boundSql = getBoundQuery(entry).replace(/\s+/g, ' ').trim();
+      const shortSql = boundSql.length <= 80 ? boundSql : boundSql.substring(0, 77) + '...';
       const tag = entry.tag ? ` [${entry.tag}]` : '';
       const status = entry.status || 'ok';
       const time = formatTimestamp(entry.timestamp);
