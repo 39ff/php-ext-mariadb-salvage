@@ -117,7 +117,7 @@ export function getBoundQuery(entry: QueryEntry): string {
     // Replace placeholder
     if (q[i] === '?' && paramIndex < params.length) {
       const param = params[paramIndex++];
-      result += param === null ? 'NULL' : `'${param}'`;
+      result += param === null ? 'NULL' : `'${param.replace(/'/g, "''")}'`;
       i++;
       continue;
     }
@@ -129,11 +129,11 @@ export function getBoundQuery(entry: QueryEntry): string {
 }
 
 const TABLE_PATTERNS = [
-  /\bFROM\s+`?(\w+)`?/gi,
-  /\bJOIN\s+`?(\w+)`?/gi,
-  /\bUPDATE\s+`?(\w+)`?/gi,
-  /\bINTO\s+`?(\w+)`?/gi,
-  /\bDELETE\s+FROM\s+`?(\w+)`?/gi,
+  /\bFROM\s+(`[^`]+`\.`[^`]+`|`[^`]+`|[\w]+\.[\w]+|[\w]+)/gi,
+  /\bJOIN\s+(`[^`]+`\.`[^`]+`|`[^`]+`|[\w]+\.[\w]+|[\w]+)/gi,
+  /\bUPDATE\s+(`[^`]+`\.`[^`]+`|`[^`]+`|[\w]+\.[\w]+|[\w]+)/gi,
+  /\bINTO\s+(`[^`]+`\.`[^`]+`|`[^`]+`|[\w]+\.[\w]+|[\w]+)/gi,
+  /\bDELETE\s+FROM\s+(`[^`]+`\.`[^`]+`|`[^`]+`|[\w]+\.[\w]+|[\w]+)/gi,
 ];
 
 export function getTables(entry: QueryEntry): string[] {
@@ -142,7 +142,7 @@ export function getTables(entry: QueryEntry): string[] {
     pattern.lastIndex = 0;
     let match;
     while ((match = pattern.exec(entry.query)) !== null) {
-      tables.add(match[1].toLowerCase());
+      tables.add(match[1].replace(/`/g, '').toLowerCase());
     }
   }
   return [...tables].sort();

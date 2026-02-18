@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { LogParserService } from './service/LogParserService';
 import { JobManagerService } from './service/JobManagerService';
@@ -95,9 +96,11 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     queryTreeProvider.loadEntries(entries);
-    jsonlOffset = entries.length > 0
-      ? require('fs').statSync(jsonlPath).size
-      : 0;
+    try {
+      jsonlOffset = entries.length > 0 ? fs.statSync(jsonlPath).size : 0;
+    } catch {
+      jsonlOffset = 0;
+    }
 
     // Update statistics
     const stats = statisticsService.computeStats(entries);
@@ -187,7 +190,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     registerStartJobCommand(context, jobManager, refreshJobs),
     registerStopJobCommand(context, jobManager, refreshJobs),
-    registerOpenLogCommand(context, jobManager, logParser, queryTreeProvider),
+    registerOpenLogCommand(context, jobManager, logParser, queryTreeProvider, statisticsService, statisticsTreeProvider),
     registerFilterByTypeCommand(context, queryTreeProvider),
     registerFilterByTagCommand(context, queryTreeProvider),
     registerClearFilterCommand(context, queryTreeProvider),
@@ -205,7 +208,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(refreshCmd);
 
   // --- Watch jobs.json for external changes ---
-  const jobsJsonPath = jobManager.getJobsJsonPath();
+  let jobsJsonPath = jobManager.getJobsJsonPath();
   fileWatcher.watchFile(jobsJsonPath, () => {
     refreshJobs();
   });
@@ -217,6 +220,14 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     if (e.affectsConfiguration('mariadbProfiler.refreshInterval') && selectedJobKey) {
       startRefreshTimer();
+    }
+    if (e.affectsConfiguration('mariadbProfiler.logDirectory')) {
+      fileWatcher.unwatchFile(jobsJsonPath);
+      jobsJsonPath = jobManager.getJobsJsonPath();
+      fileWatcher.watchFile(jobsJsonPath, () => {
+        refreshJobs();
+      });
+      refreshJobs();
     }
   });
   context.subscriptions.push(configWatcher);

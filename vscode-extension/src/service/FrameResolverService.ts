@@ -5,6 +5,7 @@ import { QueryEntry, BacktraceFrame } from '../model/QueryEntry';
 export class FrameResolverService {
   private cachedScript: vm.Script | null = null;
   private cachedScriptText: string = '';
+  private failedScripts = new Set<string>();
   private errorChannel: vscode.OutputChannel;
 
   constructor(errorChannel: vscode.OutputChannel) {
@@ -18,6 +19,11 @@ export class FrameResolverService {
       .get<string>('frameResolverScript', '');
 
     if (!scriptText) { return 0; }
+
+    if (!vscode.workspace.isTrusted) {
+      this.errorChannel.appendLine('[FrameResolver] Workspace is not trusted, skipping script execution');
+      return 0;
+    }
 
     try {
       const script = this.getScript(scriptText);
@@ -38,7 +44,7 @@ export class FrameResolverService {
       const context = vm.createContext(sandbox);
       const result = script.runInContext(context, { timeout: 1000 });
 
-      if (typeof result === 'number' && result >= 0 && result < entry.trace.length) {
+      if (Number.isInteger(result) && result >= 0 && result < entry.trace.length) {
         return result;
       }
 
@@ -52,11 +58,16 @@ export class FrameResolverService {
   invalidateCache(): void {
     this.cachedScript = null;
     this.cachedScriptText = '';
+    this.failedScripts.clear();
   }
 
   private getScript(scriptText: string): vm.Script | null {
     if (this.cachedScriptText === scriptText && this.cachedScript) {
       return this.cachedScript;
+    }
+
+    if (this.failedScripts.has(scriptText)) {
+      return null;
     }
 
     try {
@@ -65,8 +76,9 @@ export class FrameResolverService {
       return this.cachedScript;
     } catch (e) {
       this.errorChannel.appendLine(`[FrameResolver] Compile error: ${e}`);
+      this.failedScripts.add(scriptText);
       this.cachedScript = null;
-      this.cachedScriptText = scriptText;
+      this.cachedScriptText = '';
       return null;
     }
   }

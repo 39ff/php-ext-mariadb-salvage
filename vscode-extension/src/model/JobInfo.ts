@@ -73,10 +73,12 @@ export function jobsFileToJobInfos(jobsFile: JobsFile): JobInfo[] {
 }
 
 export function formatDuration(startedAt: number, endedAt?: number): string {
-  const end = endedAt ?? Date.now() / 1000;
-  const seconds = end - startedAt;
+  if (endedAt === undefined) { return 'running...'; }
+  const seconds = endedAt - startedAt;
+  if (seconds < 1) { return `${Math.round(seconds * 1000)} ms`; }
   if (seconds < 60) { return `${seconds.toFixed(1)}s`; }
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${minutes}m${secs.toFixed(0)}s`;
+  const totalSeconds = Math.round(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${minutes}m${secs}s`;
 }

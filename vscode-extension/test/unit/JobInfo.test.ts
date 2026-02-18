@@ -101,6 +101,6 @@ describe('formatDuration', () => {
   });
 
   it('should handle zero duration', () => {
-    expect(formatDuration(100, 100)).toBe('0.0s');
+    expect(formatDuration(100, 100)).toBe('0 ms');
   });
 });

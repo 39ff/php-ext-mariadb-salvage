@@ -90,13 +90,14 @@ export class LiveTailManager implements vscode.Disposable {
       const time = formatTimestamp(entry.timestamp);
 
       this.outputChannel.appendLine(
-        `[${time}] ${status.toUpperCase()}${tag} ${shortSql}`
+        `[${time}] ${qtype} ${status.toUpperCase()}${tag} ${shortSql}`
       );
 
       // Show backtrace frames
       if (entry.trace) {
-        for (const frame of entry.trace.slice(0, 3)) {
-          this.outputChannel.appendLine(`  #${entry.trace.indexOf(frame)} ${frame.file}:${frame.line}`);
+        for (let i = 0; i < Math.min(entry.trace.length, 3); i++) {
+          const frame = entry.trace[i];
+          this.outputChannel.appendLine(`  #${i} ${frame.file}:${frame.line}`);
         }
         if (entry.trace.length > 3) {
           this.outputChannel.appendLine(`  ... (${entry.trace.length - 3} more frames)`);

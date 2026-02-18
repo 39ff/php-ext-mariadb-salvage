@@ -6,7 +6,7 @@ export function applyPathMappings(containerPath: string): string {
 
   for (const [from, to] of Object.entries(mappings)) {
     if (containerPath.startsWith(from)) {
-      return containerPath.replace(from, to);
+      return to + containerPath.slice(from.length);
     }
   }
 

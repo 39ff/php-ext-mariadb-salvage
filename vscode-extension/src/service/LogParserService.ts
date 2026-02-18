@@ -17,23 +17,25 @@ export class LogParserService {
   }
 
   parseJsonlFileFromOffset(filePath: string, offset: number): { entries: QueryEntry[]; newOffset: number } {
-    if (!fs.existsSync(filePath)) {
-      return { entries: [], newOffset: offset };
-    }
-
-    const stat = fs.statSync(filePath);
-    if (stat.size <= offset) {
-      return { entries: [], newOffset: offset };
-    }
-
-    const fd = fs.openSync(filePath, 'r');
+    let fd: number;
     try {
+      fd = fs.openSync(filePath, 'r');
+    } catch {
+      return { entries: [], newOffset: offset };
+    }
+
+    try {
+      const stat = fs.fstatSync(fd);
+      if (stat.size <= offset) {
+        return { entries: [], newOffset: offset };
+      }
+
       const bufSize = stat.size - offset;
       const buffer = Buffer.alloc(bufSize);
-      fs.readSync(fd, buffer, 0, bufSize, offset);
-      const content = buffer.toString('utf-8');
+      const bytesRead = fs.readSync(fd, buffer, 0, bufSize, offset);
+      const content = buffer.slice(0, bytesRead).toString('utf-8');
       const entries = this.parseJsonlContent(content);
-      return { entries, newOffset: stat.size };
+      return { entries, newOffset: offset + bytesRead };
     } finally {
       fs.closeSync(fd);
     }
@@ -49,21 +51,23 @@ export class LogParserService {
   }
 
   tailRawLog(filePath: string, offset: number): { content: string; newOffset: number } {
-    if (!fs.existsSync(filePath)) {
-      return { content: '', newOffset: offset };
-    }
-
-    const stat = fs.statSync(filePath);
-    if (stat.size <= offset) {
-      return { content: '', newOffset: offset };
-    }
-
-    const fd = fs.openSync(filePath, 'r');
+    let fd: number;
     try {
+      fd = fs.openSync(filePath, 'r');
+    } catch {
+      return { content: '', newOffset: offset };
+    }
+
+    try {
+      const stat = fs.fstatSync(fd);
+      if (stat.size <= offset) {
+        return { content: '', newOffset: offset };
+      }
+
       const bufSize = stat.size - offset;
       const buffer = Buffer.alloc(bufSize);
-      fs.readSync(fd, buffer, 0, bufSize, offset);
-      return { content: buffer.toString('utf-8'), newOffset: stat.size };
+      const bytesRead = fs.readSync(fd, buffer, 0, bufSize, offset);
+      return { content: buffer.slice(0, bytesRead).toString('utf-8'), newOffset: offset + bytesRead };
     } finally {
       fs.closeSync(fd);
     }

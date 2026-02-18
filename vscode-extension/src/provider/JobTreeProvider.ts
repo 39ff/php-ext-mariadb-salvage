@@ -40,7 +40,7 @@ export class JobTreeItem extends vscode.TreeItem {
       job.isActive ? 'circle-filled' : 'circle-outline',
       job.isActive
         ? new vscode.ThemeColor('charts.green')
-        : new vscode.ThemeColor('charts.gray'),
+        : new vscode.ThemeColor('disabledForeground'),
     );
 
     this.contextValue = job.isActive ? 'activeJob' : 'completedJob';

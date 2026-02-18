@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { QueryEntry, getBoundQuery, getQueryType, getTables, formatTimestamp } from '../model/QueryEntry';
 
+const MAX_DOCUMENTS = 50;
+
 export class QueryDocumentProvider implements vscode.TextDocumentContentProvider {
   static readonly scheme = 'mariadb-profiler';
 
@@ -8,6 +10,7 @@ export class QueryDocumentProvider implements vscode.TextDocumentContentProvider
   readonly onDidChange = this._onDidChange.event;
 
   private documents = new Map<string, QueryEntry>();
+  private insertionOrder: string[] = [];
 
   provideTextDocumentContent(uri: vscode.Uri): string {
     const entry = this.documents.get(uri.toString());
@@ -17,12 +20,17 @@ export class QueryDocumentProvider implements vscode.TextDocumentContentProvider
   }
 
   async showQueryDetail(entry: QueryEntry, index: number): Promise<void> {
-    const qtype = getQueryType(entry);
     const uri = vscode.Uri.parse(
       `${QueryDocumentProvider.scheme}:query-${index}.sql?ts=${entry.timestamp}`
     );
 
-    this.documents.set(uri.toString(), entry);
+    const key = uri.toString();
+    if (this.documents.size >= MAX_DOCUMENTS && !this.documents.has(key)) {
+      const oldest = this.insertionOrder.shift();
+      if (oldest) { this.documents.delete(oldest); }
+    }
+    this.documents.set(key, entry);
+    this.insertionOrder.push(key);
     this._onDidChange.fire(uri);
 
     const doc = await vscode.workspace.openTextDocument(uri);

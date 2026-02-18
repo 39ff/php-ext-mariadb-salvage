@@ -217,6 +217,12 @@
           "description": "JavaScript code for custom frame resolution (receives trace, tag, query variables)"
         }
       }
+    },
+    "capabilities": {
+      "untrustedWorkspaces": {
+        "supported": false,
+        "description": "This extension executes user-provided JavaScript for frame resolution and requires a trusted workspace."
+      }
     }
   },
   "scripts": {
@@ -233,8 +239,8 @@
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^2.22.0",
-    "esbuild": "^0.19.0",
+    "esbuild": "^0.27.3",
     "typescript": "^5.3.0",
-    "vitest": "^1.2.0"
+    "vitest": "^4.0.18"
   }
 }

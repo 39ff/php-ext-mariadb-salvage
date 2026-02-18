@@ -50,7 +50,7 @@ jobs:
 
       - name: Package .vsix
         working-directory: vscode-extension
-        run: npx @vscode/vsce package --no-dependencies -o mariadb-profiler-viewer.vsix
+        run: npm exec @vscode/vsce -- package --no-dependencies -o mariadb-profiler-viewer.vsix
 
       - name: Upload extension artifact
         uses: actions/upload-artifact@v4

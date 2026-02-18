@@ -42,8 +42,11 @@ export class JobManagerService {
     const match = output.match(/Job '([^']+)' started/);
     if (match) { return match[1]; }
 
-    // Fallback: return the key if provided, or extract from output
-    return jobKey || output.trim();
+    // Fallback: return the key if provided, or extract a safe identifier from output
+    if (jobKey) { return jobKey; }
+    const safeMatch = output.trim().match(/^[A-Za-z0-9_-]+$/);
+    if (safeMatch) { return safeMatch[0]; }
+    throw new Error('Could not determine job key from CLI output');
   }
 
   async stopJob(jobKey: string): Promise<void> {
