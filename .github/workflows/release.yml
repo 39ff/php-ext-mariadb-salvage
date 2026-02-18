@@ -194,11 +194,54 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
+  # VSCode Extension build
+  # ---------------------------------------------------------------------------
+  build-vscode:
+    name: VSCode Extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Install dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Type check
+        working-directory: vscode-extension
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        working-directory: vscode-extension
+        run: npx vitest run
+
+      - name: Build
+        working-directory: vscode-extension
+        run: node esbuild.mjs --production
+
+      - name: Package .vsix
+        working-directory: vscode-extension
+        run: npx @vscode/vsce package --no-dependencies -o mariadb-profiler-viewer.vsix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mariadb-profiler-viewer-vsix
+          path: vscode-extension/*.vsix
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
   # Create GitHub Release
   # ---------------------------------------------------------------------------
   release:
     name: Create Release
-    needs: [build-linux, build-windows, build-plugin]
+    needs: [build-linux, build-windows, build-plugin, build-vscode]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -214,7 +257,7 @@ jobs:
       - name: Collect release assets
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "*.so" -o -name "*.dll" -o -name "*.zip" \) -exec cp {} release/ \;
+          find artifacts -type f \( -name "*.so" -o -name "*.dll" -o -name "*.zip" -o -name "*.vsix" \) -exec cp {} release/ \;
           echo "=== Release assets ==="
           ls -lh release/
 
