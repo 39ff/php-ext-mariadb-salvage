@@ -47,3 +47,14 @@ jobs:
       - name: Build
         working-directory: vscode-extension
         run: node esbuild.mjs --production
+
+      - name: Package .vsix
+        working-directory: vscode-extension
+        run: npx @vscode/vsce package --no-dependencies -o mariadb-profiler-viewer.vsix
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mariadb-profiler-viewer-vsix
+          path: vscode-extension/*.vsix
+          if-no-files-found: error
