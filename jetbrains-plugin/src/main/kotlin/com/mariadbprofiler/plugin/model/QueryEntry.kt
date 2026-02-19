@@ -41,116 +41,116 @@ data class QueryEntry(
      * Param values are wrapped in single quotes with internal backslashes
      * doubled and single-quotes doubled; NULL params are emitted bare.
      */
-    val boundQuery: String?
-        get() {
-            if (params.isEmpty()) return null
+    val boundQuery: String? by lazy {
+            if (params.isEmpty()) null
+            else {
+                val sb = StringBuilder(query.length + params.size * 8)
+                var paramIdx = 0
+                var i = 0
 
-            val sb = StringBuilder(query.length + params.size * 8)
-            var paramIdx = 0
-            var i = 0
+                while (i < query.length) {
+                    val ch = query[i]
 
-            while (i < query.length) {
-                val ch = query[i]
-
-                // -- line comment (MySQL/MariaDB requires space/tab/newline after --)
-                if (ch == '-' && i + 1 < query.length && query[i + 1] == '-'
-                    && i + 2 < query.length && (query[i + 2] == ' ' || query[i + 2] == '\t' || query[i + 2] == '\n' || query[i + 2] == '\r')) {
-                    val eol = query.indexOf('\n', i)
-                    if (eol == -1) {
-                        sb.append(query, i, query.length)
-                        i = query.length
-                    } else {
-                        sb.append(query, i, eol + 1)
-                        i = eol + 1
-                    }
-                    continue
-                }
-
-                // # line comment (MySQL/MariaDB): copy through to end of line
-                if (ch == '#') {
-                    val eol = query.indexOf('\n', i)
-                    if (eol == -1) {
-                        sb.append(query, i, query.length)
-                        i = query.length
-                    } else {
-                        sb.append(query, i, eol + 1)
-                        i = eol + 1
-                    }
-                    continue
-                }
-
-                // /* block comment */: copy through to closing */
-                if (ch == '/' && i + 1 < query.length && query[i + 1] == '*') {
-                    val close = query.indexOf("*/", i + 2)
-                    if (close == -1) {
-                        sb.append(query, i, query.length)
-                        i = query.length
-                    } else {
-                        sb.append(query, i, close + 2)
-                        i = close + 2
-                    }
-                    continue
-                }
-
-                // Quoted context: single-quote, double-quote, or backtick
-                if (ch == '\'' || ch == '"' || ch == '`') {
-                    val quote = ch
-                    sb.append(ch)
-                    i++
-                    while (i < query.length) {
-                        val qch = query[i]
-                        // Backslash escape inside single- and double-quoted strings
-                        if (qch == '\\' && (quote == '\'' || quote == '"')) {
-                            sb.append(qch)
-                            if (i + 1 < query.length) {
-                                sb.append(query[i + 1])
-                                i += 2
-                            } else {
-                                i++
-                            }
-                            continue
+                    // -- line comment (MySQL/MariaDB requires space/tab/newline after --)
+                    if (ch == '-' && i + 1 < query.length && query[i + 1] == '-'
+                        && i + 2 < query.length && (query[i + 2] == ' ' || query[i + 2] == '\t' || query[i + 2] == '\n' || query[i + 2] == '\r')) {
+                        val eol = query.indexOf('\n', i)
+                        if (eol == -1) {
+                            sb.append(query, i, query.length)
+                            i = query.length
+                        } else {
+                            sb.append(query, i, eol + 1)
+                            i = eol + 1
                         }
-                        if (qch == quote) {
-                            // doubled-quote escape ('' / "" inside their respective literals)
-                            if (i + 1 < query.length && query[i + 1] == quote) {
-                                sb.append(quote)
-                                sb.append(quote)
-                                i += 2
+                        continue
+                    }
+
+                    // # line comment (MySQL/MariaDB): copy through to end of line
+                    if (ch == '#') {
+                        val eol = query.indexOf('\n', i)
+                        if (eol == -1) {
+                            sb.append(query, i, query.length)
+                            i = query.length
+                        } else {
+                            sb.append(query, i, eol + 1)
+                            i = eol + 1
+                        }
+                        continue
+                    }
+
+                    // /* block comment */: copy through to closing */
+                    if (ch == '/' && i + 1 < query.length && query[i + 1] == '*') {
+                        val close = query.indexOf("*/", i + 2)
+                        if (close == -1) {
+                            sb.append(query, i, query.length)
+                            i = query.length
+                        } else {
+                            sb.append(query, i, close + 2)
+                            i = close + 2
+                        }
+                        continue
+                    }
+
+                    // Quoted context: single-quote, double-quote, or backtick
+                    if (ch == '\'' || ch == '"' || ch == '`') {
+                        val quote = ch
+                        sb.append(ch)
+                        i++
+                        while (i < query.length) {
+                            val qch = query[i]
+                            // Backslash escape inside single- and double-quoted strings
+                            if (qch == '\\' && (quote == '\'' || quote == '"')) {
+                                sb.append(qch)
+                                if (i + 1 < query.length) {
+                                    sb.append(query[i + 1])
+                                    i += 2
+                                } else {
+                                    i++
+                                }
                                 continue
                             }
-                            // closing quote
-                            sb.append(quote)
+                            if (qch == quote) {
+                                // doubled-quote escape ('' / "" inside their respective literals)
+                                if (i + 1 < query.length && query[i + 1] == quote) {
+                                    sb.append(quote)
+                                    sb.append(quote)
+                                    i += 2
+                                    continue
+                                }
+                                // closing quote
+                                sb.append(quote)
+                                i++
+                                break
+                            }
+                            sb.append(qch)
                             i++
-                            break
                         }
-                        sb.append(qch)
-                        i++
+                        continue
                     }
-                    continue
-                }
 
-                // Parameter placeholder
-                if (ch == '?') {
-                    if (paramIdx < params.size) {
-                        val v = params[paramIdx++]
-                        if (v == null) {
-                            sb.append("NULL")
+                    // Parameter placeholder
+                    if (ch == '?') {
+                        if (paramIdx < params.size) {
+                            val v = params[paramIdx++]
+                            if (v == null) {
+                                sb.append("NULL")
+                            } else {
+                                sb.append('\'')
+                                sb.append(v.replace("\\", "\\\\").replace("'", "''"))
+                                sb.append('\'')
+                            }
                         } else {
-                            sb.append('\'')
-                            sb.append(v.replace("\\", "\\\\").replace("'", "''"))
-                            sb.append('\'')
+                            sb.append(ch) // more ?'s than params – keep as-is
                         }
-                    } else {
-                        sb.append(ch) // more ?'s than params – keep as-is
+                        i++
+                        continue
                     }
-                    i++
-                    continue
-                }
 
-                sb.append(ch)
-                i++
+                    sb.append(ch)
+                    i++
+                }
+                sb.toString()
             }
-            return sb.toString()
         }
     /** Tag as list for UI display compatibility */
     val tags: List<String>
