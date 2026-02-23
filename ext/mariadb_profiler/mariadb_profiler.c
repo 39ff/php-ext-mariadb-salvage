@@ -15,6 +15,7 @@
 #include "php_ini.h"
 #include "ext/standard/info.h"
 #include "php_mariadb_profiler.h"
+#include "profiler_xdebug.h"
 
 #include <sys/stat.h>
 #include <errno.h>
@@ -60,6 +61,14 @@ PHP_INI_BEGIN()
         PHP_INI_SYSTEM,
         OnUpdateLong,
         trace_depth,
+        zend_mariadb_profiler_globals,
+        mariadb_profiler_globals)
+
+    STD_PHP_INI_ENTRY("mariadb_profiler.xdebug_break_threshold",
+        "0",
+        PHP_INI_ALL,
+        OnUpdateReal,
+        xdebug_break_threshold,
         zend_mariadb_profiler_globals,
         mariadb_profiler_globals)
 PHP_INI_END()
@@ -226,6 +235,8 @@ PHP_RINIT_FUNCTION(mariadb_profiler)
 /* {{{ PHP_RSHUTDOWN_FUNCTION */
 PHP_RSHUTDOWN_FUNCTION(mariadb_profiler)
 {
+    profiler_xdebug_request_shutdown();
+
     if (PROFILER_G(enabled)) {
         profiler_tag_clear_all();
         profiler_job_free_active_jobs();
@@ -256,6 +267,12 @@ PHP_MINFO_FUNCTION(mariadb_profiler)
     php_info_print_table_row(2, "Log directory", PROFILER_G(log_dir));
     php_info_print_table_row(2, "Raw logging", PROFILER_G(raw_log) ? "Yes" : "No");
     php_info_print_table_row(2, "Trace depth", trace_depth_str);
+    {
+        char threshold_str[32];
+        snprintf(threshold_str, sizeof(threshold_str), "%.3f",
+            PROFILER_G(xdebug_break_threshold));
+        php_info_print_table_row(2, "xdebug break threshold (s)", threshold_str);
+    }
     php_info_print_table_end();
 
     DISPLAY_INI_ENTRIES();
