@@ -19,7 +19,7 @@ if test "$PHP_MARIADB_PROFILER" != "no"; then
   fi
 
   PHP_NEW_EXTENSION(mariadb_profiler,
-    mariadb_profiler.c profiler_mysqlnd_plugin.c profiler_job.c profiler_log.c profiler_tag.c profiler_trace.c,
+    mariadb_profiler.c profiler_mysqlnd_plugin.c profiler_job.c profiler_log.c profiler_tag.c profiler_trace.c profiler_xdebug.c,
     $ext_shared,, $PROFILER_CFLAGS)
 
   dnl Require mysqlnd

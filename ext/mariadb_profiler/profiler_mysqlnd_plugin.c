@@ -14,6 +14,37 @@
 #include "php.h"
 #include "php_mariadb_profiler.h"
 #include "profiler_log.h"
+#include "profiler_xdebug.h"
+
+#ifndef PHP_WIN32
+# include <sys/time.h>
+#endif
+
+/* {{{ profiler_get_microtime
+ * Get current time in seconds with microsecond precision. */
+static double profiler_get_microtime(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (double)tv.tv_sec + (double)tv.tv_usec / 1000000.0;
+}
+/* }}} */
+
+/* {{{ profiler_check_slow_query
+ * If xdebug is active and duration exceeds the threshold, trigger a breakpoint. */
+static void profiler_check_slow_query(double duration_ms)
+{
+    double threshold;
+    TSRMLS_FETCH();
+
+    threshold = PROFILER_G(xdebug_break_threshold);
+    if (threshold > 0 && duration_ms >= threshold * 1000.0) {
+        if (profiler_xdebug_is_debugger_active()) {
+            profiler_xdebug_break();
+        }
+    }
+}
+/* }}} */
 
 /*
  * mysqlnd internal API changed across PHP versions:
@@ -62,14 +93,23 @@ MYSQLND_METHOD(profiler_conn, query)(
     PROFILER_QUERY_LEN_T query_len TSRMLS_DC)
 {
     enum_func_status result;
+    double t0, duration_ms;
+
+    t0 = profiler_get_microtime();
 
     /* Call the original method first */
     result = orig_conn_data_methods->query(conn, query, query_len TSRMLS_CC);
 
-    /* Log the query with execution status */
+    duration_ms = (profiler_get_microtime() - t0) * 1000.0;
+
+    /* Log the query with execution status and duration */
     if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len, result == PASS ? "ok" : "err");
+        profiler_log_query(query, query_len,
+                           result == PASS ? "ok" : "err", duration_ms);
     }
+
+    /* Check slow query threshold for xdebug break */
+    profiler_check_slow_query(duration_ms);
 
     return result;
 }
@@ -92,10 +132,15 @@ MYSQLND_METHOD(profiler_conn, send_query)(
     zval *err_cb)
 {
     enum_func_status result;
+    double t0, duration_ms;
+    t0 = profiler_get_microtime();
     result = orig_conn_data_methods->send_query(conn, query, query_len, read_cb, err_cb);
+    duration_ms = (profiler_get_microtime() - t0) * 1000.0;
     if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len, result == PASS ? "ok" : "err");
+        profiler_log_query(query, query_len,
+                           result == PASS ? "ok" : "err", duration_ms);
     }
+    profiler_check_slow_query(duration_ms);
     return result;
 }
 #elif PHP_VERSION_ID >= 70000
@@ -110,10 +155,15 @@ MYSQLND_METHOD(profiler_conn, send_query)(
     zval *err_cb)
 {
     enum_func_status result;
+    double t0, duration_ms;
+    t0 = profiler_get_microtime();
     result = orig_conn_data_methods->send_query(conn, query, query_len, type, read_cb, err_cb);
+    duration_ms = (profiler_get_microtime() - t0) * 1000.0;
     if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len, result == PASS ? "ok" : "err");
+        profiler_log_query(query, query_len,
+                           result == PASS ? "ok" : "err", duration_ms);
     }
+    profiler_check_slow_query(duration_ms);
     return result;
 }
 #else
@@ -125,10 +175,15 @@ MYSQLND_METHOD(profiler_conn, send_query)(
     unsigned int query_len TSRMLS_DC)
 {
     enum_func_status result;
+    double t0, duration_ms;
+    t0 = profiler_get_microtime();
     result = orig_conn_data_methods->send_query(conn, query, query_len TSRMLS_CC);
+    duration_ms = (profiler_get_microtime() - t0) * 1000.0;
     if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len, result == PASS ? "ok" : "err");
+        profiler_log_query(query, query_len,
+                           result == PASS ? "ok" : "err", duration_ms);
     }
+    profiler_check_slow_query(duration_ms);
     return result;
 }
 #endif
@@ -145,8 +200,11 @@ MYSQLND_METHOD(profiler_stmt, prepare)(
     PROFILER_QUERY_LEN_T query_len TSRMLS_DC)
 {
     enum_func_status result;
+    double t0, duration_ms;
 
+    t0 = profiler_get_microtime();
     result = orig_stmt_methods->prepare(stmt, query, query_len TSRMLS_CC);
+    duration_ms = (profiler_get_microtime() - t0) * 1000.0;
 
 #if PHP_VERSION_ID >= 70000
     if (PROFILER_G(enabled)) {
@@ -161,14 +219,17 @@ MYSQLND_METHOD(profiler_stmt, prepare)(
             );
         } else if (result != PASS && profiler_job_is_any_active()) {
             /* Failed prepare has no subsequent execute(); log immediately with err status */
-            profiler_log_query(query, query_len, "err");
+            profiler_log_query(query, query_len, "err", duration_ms);
+            profiler_check_slow_query(duration_ms);
         }
     }
 #else
     /* PHP 5.x: log template at prepare time (no param support) */
     if (PROFILER_G(enabled) && profiler_job_is_any_active()) {
-        profiler_log_query(query, query_len, result == PASS ? "ok" : "err");
+        profiler_log_query(query, query_len,
+                           result == PASS ? "ok" : "err", duration_ms);
     }
+    profiler_check_slow_query(duration_ms);
 #endif
 
     return result;
@@ -359,11 +420,16 @@ MYSQLND_METHOD(profiler_stmt, execute)(
     MYSQLND_STMT * const stmt)
 {
     enum_func_status result;
+    double t0, duration_ms;
+
+    t0 = profiler_get_microtime();
 
     /* Call the original method first */
     result = orig_stmt_methods->execute(stmt);
 
-    /* Log with status and params after execution */
+    duration_ms = (profiler_get_microtime() - t0) * 1000.0;
+
+    /* Log with status, params, and duration after execution */
     if (PROFILER_G(enabled) && profiler_job_is_any_active() && PROFILER_G(stmt_queries)) {
         zval *entry = zend_hash_index_find(
             PROFILER_G(stmt_queries),
@@ -373,13 +439,16 @@ MYSQLND_METHOD(profiler_stmt, execute)(
             char *params_json = profiler_build_params_json(stmt);
             profiler_log_query_with_params(
                 Z_STRVAL_P(entry), Z_STRLEN_P(entry), params_json,
-                result == PASS ? "ok" : "err"
+                result == PASS ? "ok" : "err", duration_ms
             );
             if (params_json) {
                 efree(params_json);
             }
         }
     }
+
+    /* Check slow query threshold for xdebug break */
+    profiler_check_slow_query(duration_ms);
 
     return result;
 }
