@@ -31,7 +31,7 @@ static int profiler_xdebug_detect(void)
 {
 #if PHP_VERSION_ID >= 70000
     zend_string *name;
-    zval *mode_val;
+    char *mode_str;
 
     /* Check if xdebug module is loaded */
     name = zend_string_init("xdebug", sizeof("xdebug") - 1, 0);
@@ -45,11 +45,13 @@ static int profiler_xdebug_detect(void)
      * xdebug 3.x uses xdebug.mode to control which features are active.
      * If mode does not include "debug", step-debugging is disabled.
      * xdebug 2.x does not have xdebug.mode; step-debug is always available.
+     *
+     * zend_ini_string() returns char* (NULL if setting doesn't exist).
      */
-    mode_val = zend_ini_str("xdebug.mode", sizeof("xdebug.mode") - 1, 0);
-    if (mode_val && Z_TYPE_P(mode_val) == IS_STRING) {
+    mode_str = zend_ini_string("xdebug.mode", sizeof("xdebug.mode") - 1, 0);
+    if (mode_str && mode_str[0] != '\0') {
         /* xdebug 3.x: check for "debug" in the mode string */
-        if (strstr(Z_STRVAL_P(mode_val), "debug") != NULL) {
+        if (strstr(mode_str, "debug") != NULL) {
             return 1;
         }
         /* mode is set but doesn't include "debug" */
@@ -104,7 +106,6 @@ void profiler_xdebug_break(void)
 
     zval_ptr_dtor(&fname);
 #else
-    zval *retval_ptr = NULL;
     zval *fname;
     zval retval;
     TSRMLS_FETCH();
